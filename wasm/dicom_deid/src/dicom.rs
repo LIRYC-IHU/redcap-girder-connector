@@ -5,7 +5,10 @@ use dicom_anonymization::config::uid_root::UidRoot;
 use dicom_anonymization::processor::DefaultProcessor;
 use dicom_anonymization::tags;
 use dicom_anonymization::Anonymizer;
-use dicom_core::{DataElement, PrimitiveValue, VR};
+use dicom_core::{DataElement, PrimitiveValue, Tag, VR};
+use dicom_object::{DefaultDicomObject, FileDicomObject, InMemDicomObject};
+
+use crate::dates;
 
 /// UID root registered for IHU Liryc, used to derive the anonymized UIDs.
 const UID_ROOT: &str = "1.2.826.0.1.3680043.10.543";
@@ -54,8 +57,9 @@ pub fn deidentify(
     record_id: &str,
     patient_name: &str,
 ) -> Result<Vec<u8>, String> {
-    validate(input_bytes).map_err(|e| format!("SKIP: {e}"))?;
     let stream = dicom_stream(input_bytes).map_err(|e| format!("SKIP: {e}"))?;
+    let source = dicom_object::from_reader(Cursor::new(stream))
+        .map_err(|e| format!("SKIP: input is not a valid DICOM file: {e}"))?;
 
     // The anonymizer only visits elements that already exist in the source, so
     // the REDCap identity is written explicitly afterwards: a file missing
@@ -94,10 +98,64 @@ pub fn deidentify(
         PrimitiveValue::from("YES"),
     ));
 
+    apply_date_policy(&source, &mut anonymized);
+
     let mut out = Vec::new();
     anonymized
         .write_all(&mut out)
         .map_err(|e| format!("SKIP: DICOM write failed: {e}"))?;
 
     Ok(out)
+}
+
+/// Date tags rewritten by the age-preserving shift.
+///
+/// The anonymizer removes or hash-shifts these on its own; they are restored
+/// here from the source, moved by the patient's offset, so the interval between
+/// the birth date and the acquisition survives.
+const SHIFTED_DATE_TAGS: &[(Tag, VR)] = &[
+    (tags::STUDY_DATE, VR::DA),
+    (tags::SERIES_DATE, VR::DA),
+    (tags::ACQUISITION_DATE, VR::DA),
+    (tags::CONTENT_DATE, VR::DA),
+    (tags::INSTANCE_CREATION_DATE, VR::DA),
+    (tags::PERFORMED_PROCEDURE_STEP_START_DATE, VR::DA),
+    (tags::ACQUISITION_DATE_TIME, VR::DT),
+];
+
+/// Pin the birth date to 1970-01-01 and move every other date by the same
+/// offset. Without a birth date there is no age to preserve, so the anonymizer's
+/// own handling (hash-shifted study date, removed series/acquisition dates) is
+/// left in place.
+fn apply_date_policy(
+    source: &DefaultDicomObject,
+    anonymized: &mut FileDicomObject<InMemDicomObject>,
+) {
+    let Some(birth_date) = read_string(source, tags::PATIENT_BIRTH_DATE) else {
+        return;
+    };
+    let Some(offset) = dates::offset_from_birth_date(&birth_date) else {
+        return;
+    };
+
+    anonymized.put(DataElement::new(
+        tags::PATIENT_BIRTH_DATE,
+        VR::DA,
+        PrimitiveValue::from(dates::as_epoch_birth_date(&birth_date)),
+    ));
+
+    for (tag, vr) in SHIFTED_DATE_TAGS {
+        let Some(original) = read_string(source, *tag) else {
+            continue;
+        };
+        let Some(shifted) = dates::shift(&original, offset) else {
+            continue;
+        };
+        anonymized.put(DataElement::new(*tag, *vr, PrimitiveValue::from(shifted)));
+    }
+}
+
+fn read_string(object: &DefaultDicomObject, tag: Tag) -> Option<String> {
+    let value = object.element(tag).ok()?.to_str().ok()?.trim().to_string();
+    (!value.is_empty()).then_some(value)
 }

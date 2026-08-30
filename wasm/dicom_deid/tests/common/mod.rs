@@ -29,12 +29,27 @@ const SECONDARY_CAPTURE_STORAGE: &str = "1.2.840.10008.5.1.4.1.1.7";
 /// A minimal but standards-shaped DICOM Part 10 file (128-byte preamble +
 /// `DICM` + file meta group + data set) carrying the PHI constants above.
 pub fn dicom_fixture() -> Vec<u8> {
-    dicom_fixture_with_study_date(DICOM_STUDY_DATE)
+    dicom_fixture_with(DICOM_STUDY_DATE, Some(DICOM_BIRTH_DATE))
 }
 
-/// Same fixture, with a caller-chosen `StudyDate`, to observe how the date
-/// shift behaves across two studies of the same patient.
+/// Same fixture with a caller-chosen `StudyDate`, to observe the date shift
+/// across two studies of one patient.
 pub fn dicom_fixture_with_study_date(study_date: &str) -> Vec<u8> {
+    dicom_fixture_with(study_date, Some(DICOM_BIRTH_DATE))
+}
+
+/// Same fixture with a caller-chosen `PatientBirthDate`, which is what sets the
+/// offset every other date moves by.
+pub fn dicom_fixture_with_birth_date(birth_date: &str) -> Vec<u8> {
+    dicom_fixture_with(DICOM_STUDY_DATE, Some(birth_date))
+}
+
+/// Same fixture with no birth date at all: there is then no age to preserve.
+pub fn dicom_fixture_without_birth_date() -> Vec<u8> {
+    dicom_fixture_with(DICOM_STUDY_DATE, None)
+}
+
+fn dicom_fixture_with(study_date: &str, birth_date: Option<&str>) -> Vec<u8> {
     let mut object = InMemDicomObject::new_empty();
 
     object.put(DataElement::new(
@@ -52,11 +67,13 @@ pub fn dicom_fixture_with_study_date(study_date: &str) -> Vec<u8> {
         VR::LO,
         PrimitiveValue::from(DICOM_PATIENT_ID),
     ));
-    object.put(DataElement::new(
-        tags::PATIENT_BIRTH_DATE,
-        VR::DA,
-        PrimitiveValue::from(DICOM_BIRTH_DATE),
-    ));
+    if let Some(birth_date) = birth_date {
+        object.put(DataElement::new(
+            tags::PATIENT_BIRTH_DATE,
+            VR::DA,
+            PrimitiveValue::from(birth_date),
+        ));
+    }
     object.put(DataElement::new(
         tags::PATIENT_SEX,
         VR::CS,
@@ -69,6 +86,16 @@ pub fn dicom_fixture_with_study_date(study_date: &str) -> Vec<u8> {
     ));
     object.put(DataElement::new(
         tags::STUDY_DATE,
+        VR::DA,
+        PrimitiveValue::from(study_date),
+    ));
+    object.put(DataElement::new(
+        tags::SERIES_DATE,
+        VR::DA,
+        PrimitiveValue::from(study_date),
+    ));
+    object.put(DataElement::new(
+        tags::ACQUISITION_DATE,
         VR::DA,
         PrimitiveValue::from(study_date),
     ));
@@ -218,6 +245,9 @@ pub fn hl7_v3_fixture() -> String {
       <room>412</room>
       <bed>B</bed>
       <pointOfCare>CARDIOLOGY WARD 3</pointOfCare>
+      <subjectDemographicPerson>
+        <birthTime value="19540212"/>
+      </subjectDemographicPerson>
       <technician>NURSE^ALICE</technician>
       <doctor>PROF^BERNARD</doctor>
       <birthTime value="19540212"/>
@@ -257,6 +287,7 @@ pub fn philips_fixture() -> String {
         <years>67</years>
       </age>
       <sex>Female</sex>
+      <dateofbirth>1954-02-12</dateofbirth>
     </generalpatientdata>
     <clinicaltrialdata>
       <clinicaltrialprotocolid>PROTO-2024-007</clinicaltrialprotocolid>
@@ -279,4 +310,23 @@ pub fn philips_fixture() -> String {
 </restingecgdata>
 "#
     .to_string()
+}
+
+/// Days between two `YYYYMMDD` DICOM dates, via a day count from a fixed epoch.
+pub fn days_between(from: &str, to: &str) -> i64 {
+    fn to_days(date: &str) -> i64 {
+        let year: i64 = date[0..4].parse().unwrap();
+        let month: i64 = date[4..6].parse().unwrap();
+        let day: i64 = date[6..8].parse().unwrap();
+
+        // Howard Hinnant's days-from-civil algorithm.
+        let year = if month <= 2 { year - 1 } else { year };
+        let era = year.div_euclid(400);
+        let year_of_era = year - era * 400;
+        let day_of_year = (153 * (if month > 2 { month - 3 } else { month + 9 }) + 2) / 5 + day - 1;
+        let day_of_era = year_of_era * 365 + year_of_era / 4 - year_of_era / 100 + day_of_year;
+        era * 146097 + day_of_era - 719468
+    }
+
+    to_days(to) - to_days(from)
 }

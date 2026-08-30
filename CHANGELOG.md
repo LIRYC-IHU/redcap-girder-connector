@@ -1,5 +1,58 @@
 # Changelog
 
+## 1.3.0
+
+### Changed — deidentification
+
+- **Dates now follow one rule across DICOM and XML ECG**: the birth date becomes
+  1970-01-01 and every other date moves by the same offset, so the age at
+  acquisition is preserved to the day while the real calendar dates are
+  destroyed. Previously DICOM hash-shifted the study date by an offset derived
+  from the patient id (age not preserved) and removed series and acquisition
+  dates, while XML ECG left every timestamp untouched — so an ECG could be used
+  to undo the shift applied to that patient's DICOM.
+- A file with no birth date is not shifted at all, since there is no age to
+  preserve; the format's previous fallback applies.
+- Sex is no longer blanked in XML ECG files. It is analysis data, and it was
+  being removed from Philips documents (`<sex>`) while surviving in HL7 v3
+  (`administrativeGenderCode`) — the two dialects now agree.
+
+- **XML ECG deidentification is now an allowlist.** The waveform, coded
+  vocabulary, units, the time base, sex and the structural attributes HL7
+  requires are kept; everything else is dropped. It used to be a denylist, which
+  cannot be complete over vendor-extensible XML — see below for what a real
+  recording carried through it.
+- Identifiers the aECG schema makes mandatory are replaced rather than blanked,
+  from the REDCap context as on the DICOM side: each UID root becomes an arc of
+  the Liryc OID (one per entity kind) and the extension receives the record id.
+  Blanking them would have produced documents that no longer validate, since
+  `@root` is typed as an OID or UUID. Nothing is minted at random, so the
+  transform is reproducible.
+- A document whose signal elements are not on the allowlist is now **refused
+  with a visible error** instead of being uploaded emptied. The allowlist is
+  curated against HL7 v3, the only dialect a real recording was available for.
+
+### Fixed
+
+- **Uploading to a record that has not been saved yet is now refused**, in the
+  widget and again server-side. REDCap hands the module a placeholder instead of
+  a record id until the record exists, so those uploads landed in a Girder
+  folder named `external-modules-temporary-record-id-…` that no record ever
+  points at, and carried `UNASSIGNED_RECORD` inside the deidentified files —
+  where it cannot be corrected afterwards.
+
+### Fixed — deidentification
+
+- **The instance OID leaked the acquisition date, time and device serial** in
+  HL7 v3 recordings (`755.<serial>.<date>.<time>`, repeated six times in the
+  sample examined), which undid the date shift applied elsewhere in the file.
+- The **device serial number**, the **investigator identifier** and the
+  **free-text interpretation** survived, none of them covered by any pattern.
+- The patient's **birth date survived in XML ECG files** (`birthTime`,
+  `dateofbirth`): no pattern covered it. It is now pinned to the epoch.
+- The **trial subject identifier** (`trialSubject/id`) and the **race code**
+  survived for the same reason; both are now blanked.
+
 ## 1.2.0
 
 ### Fixed — deidentification

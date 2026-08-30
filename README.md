@@ -13,7 +13,7 @@ Supported formats:
 | Format | Detection | What is removed |
 | --- | --- | --- |
 | DICOM | `DICM` magic code | Patient identity, institution, private tags; UIDs rehashed; dates shifted |
-| XML ECG (HL7 v2/v3, Philips) | root element + namespace | Patient identity, staff names, demographics, trial identifiers |
+| XML ECG (HL7 v2/v3, Philips) | root element + namespace | Everything outside an allowlist; UIDs replaced, dates shifted |
 | Schiller Holter | file magic number | Patient block, voice annotations, device UUID |
 
 Anything else is dropped from the batch rather than uploaded.
@@ -54,7 +54,7 @@ To deploy a working copy into a local REDCap, symlink `src/` into
 `redcap/modules/` under a versioned name:
 
 ```bash
-ln -s "$PWD/src" /path/to/redcap/modules/girder_uploader_v1.2.0
+ln -s "$PWD/src" /path/to/redcap/modules/girder_uploader_v1.3.0
 ```
 
 ## Tests
@@ -90,13 +90,13 @@ REDCap identifies a module version by its **directory name**, so a release is a
 zip containing a single `girder_uploader_v<VERSION>` folder.
 
 ```bash
-scripts/bump-version.sh 1.2.0
-git commit -am "Release v1.2.0"
-git tag v1.2.0 && git push --follow-tags
+scripts/bump-version.sh 1.3.0
+git commit -am "Release v1.3.0"
+git tag v1.3.0 && git push --follow-tags
 ```
 
 The tag triggers `.github/workflows/release.yml`, which re-runs the suites,
-builds the WASM, and publishes `girder_uploader_v1.2.0.zip` on the GitHub
+builds the WASM, and publishes `girder_uploader_v1.3.0.zip` on the GitHub
 release. That zip is what you feed to REDCap's *Upload module ZIP*.
 
 To build one locally:
@@ -129,18 +129,22 @@ that is an explicit opt-out, not an oversight.
 
 ## How an upload works
 
-1. The browser expands a single top-level ZIP if one was dropped, filters out OS
+1. The record must already exist. Until it is saved REDCap has no id for it,
+   and the record id is both the Girder folder name and the identity written
+   into the deidentified files — so the widget stays locked, and the server
+   refuses the upload independently.
+2. The browser expands a single top-level ZIP if one was dropped, filters out OS
    noise (`.DS_Store`, dotfiles, `~*`) and nested archives, and sorts the batch
    by path. Batches are capped at 9999 files.
-2. Every file goes through the WASM worker. Recognized formats are deidentified
+3. Every file goes through the WASM worker. Recognized formats are deidentified
    (or passed through when disabled); unrecognized files are skipped.
-3. The server builds a signed upload plan per file — target folder, item, stored
+4. The server builds a signed upload plan per file — target folder, item, stored
    name — and the browser sends chunks back against that plan. The signature is
    an HMAC over the plan keyed by the Girder API key, so the browser cannot
    redirect an upload to another collection or record.
-4. Files land under `{DAG}/{record_id}/{field_name}` (with ` -{instance}`
+5. Files land under `{DAG}/{record_id}/{field_name}` (with ` -{instance}`
    appended for repeating instances beyond the first).
-5. A JSON summary — file sample, counts, Girder folder link, upload state — is
+6. A JSON summary — file sample, counts, Girder folder link, upload state — is
    written back into the tagged field. Failed uploads are recorded and can be
    retried.
 
@@ -163,29 +167,78 @@ module writes:
 - `DeidentificationMethod` ← `IHU LIRYC REDCAP PLUGIN`, `PatientIdentityRemoved` ← `YES`
 
 UIDs are rehashed deterministically, so instances of one study stay grouped.
-Study dates are **shifted back** by an offset derived from the original patient
-id — intervals between that patient's studies survive, absolute dates do not.
-Series and acquisition dates are removed outright.
+Dates follow the shared policy below.
 
 **XML ECG** recognizes HL7 v2, HL7 v3 (`AnnotatedECG`) and Philips
-(`restingecgdata`) documents by root element and namespace. Element paths
-matching a known identity fragment (`patientid`, `lastname`, `age`, `room`,
-`technician`, `clinicaltrialprotocolid`, …) are blanked; paths containing
-`patientid` receive the record id instead. `*ExistFlag` attributes are left
-alone, since they describe structure rather than identity. The document is
-rewritten as a stream, so repeated paths — one per lead, per measurement — keep
-their own values.
+(`restingecgdata`) documents by root element and namespace, and rewrites them
+against an **allowlist**: the waveform, coded vocabulary, units, the time base,
+sex and the structural attributes HL7 requires are kept; *everything else is
+dropped*. Unknown attributes are removed rather than emptied, since an empty
+value breaks the datatype's pattern; unknown element text is emptied, keeping
+the element in place.
 
-The identity fragments are matched as substrings of the whole element path,
-which is deliberately blunt: on an HL7 v3 recording it also blanks vocabulary
-attributes such as `codeSystemName` and `displayName` (they contain `name`).
-The codes themselves and their `codeSystem` OIDs are preserved, so the document
-stays machine-readable, but it loses the human-readable labels. Widening the
-rule is safe; narrowing it is not, so it is left as it is.
+An allowlist is the only workable direction here. ECG XML is vendor-extensible,
+and while this module used a denylist a real recording carried through: the
+patient's birth date, the trial subject id, the race code, the device serial
+number, a free-text interpretation, and — six times over — an instance OID that
+spelled out the acquisition date and time, which quietly undid the date shift.
+
+Identifiers required by the schema are **replaced, not blanked**. The aECG
+implementation guide (Appendix D) makes `AnnotatedECG/id/@root`,
+`trialSubject/id/@root` and `clinicalTrial/id/@root` mandatory, and `@root` is
+typed as an OID or UUID, so emptying it yields a document that no longer
+validates.
+
+The replacements come from the REDCap context, exactly as on the DICOM side:
+each `@root` becomes an arc of the Liryc OID `1.2.826.0.1.3680043.10.543` —
+`.1` for the document, `.2` for a series, `.3` for the subject, `.4` for the
+trial, so the entities keep distinct UIDs — and `@extension`, which the standard
+reserves for "the traditional identifier", receives the record id. Trial and
+site extensions are dropped instead, being site information. Nothing is minted
+at random, so deidentifying a recording twice yields the same identifiers.
+
+Sex is deliberately kept in both dialects; it is analysis data. `*ExistFlag`
+attributes are kept too, since they describe structure rather than identity. The
+document is rewritten as a stream, so repeated paths — one per lead, per
+measurement — keep their own values.
+
+**The allowlist is curated against HL7 v3, the only dialect for which a real
+recording was available.** A document whose signal elements are not on the list
+would come out empty, so the deidentifier refuses it instead: the upload fails
+with a visible error naming the problem, rather than storing a gutted
+recording. If that happens on a Philips or vendor file, the fix is to add its
+signal elements to `ALLOWED_KEYS`.
 
 **Schiller Holter** zeroes the voice-annotation section (technicians name the
 patient out loud), fills the demographics block, writes the record id into the
 patient id field, mints a fresh device UUID, and repairs the CRC.
+
+### Dates
+
+DICOM and XML ECG share one rule, so a patient's files stay consistent with each
+other:
+
+- the birth date becomes **1970-01-01**;
+- every other date moves by that same offset, `1970-01-01 − birth date`.
+
+`exam − birth` is therefore preserved to the day: **age at acquisition is
+exact**, intervals between a patient's studies are exact, and the real calendar
+dates are gone. Reversing a shifted date needs the birth date, which the file no
+longer carries. The offset is per patient, so two patients imaged the same day
+do not land on the same anonymized date.
+
+Two consequences worth knowing. The shift is a whole number of days, so the
+acquisition's day-of-year moves by the birth date's day-of-year: for a patient
+recorded as born on 1 January — a common placeholder for an unknown date — the
+acquisition keeps its real day and month. And a file with **no** birth date gets
+no shift, because there is no age to preserve; its dates are then handled by the
+format's own default, which for DICOM means a hash-shifted study date and
+removed series and acquisition dates.
+
+Times of day are kept, and each date is written back in the notation it used
+(`YYYYMMDD` or `YYYY-MM-DD`). A value is only treated as a date if it parses as
+a real calendar date in a plausible year, so identifiers and signal samples that
+happen to be eight digits are left alone.
 
 A file the worker cannot place is reported as `SKIP:` and dropped from the
 batch; a genuine failure aborts the upload instead.

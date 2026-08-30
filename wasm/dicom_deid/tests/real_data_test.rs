@@ -12,7 +12,8 @@
 
 use std::path::{Path, PathBuf};
 
-use dicom_deid::{deidentify_bytes, dicom, xml};
+use dicom_deid::xml::Policy;
+use dicom_deid::{dates, deidentify_bytes, dicom, xml};
 use quick_xml::events::Event;
 use quick_xml::Reader;
 
@@ -92,6 +93,23 @@ fn real_dicom_files_are_deidentified() {
             dicom::validate(&output).is_ok(),
             "{name}: the deidentified file no longer parses"
         );
+
+        if let Some(birth) = source_birth_date(&source) {
+            let offset = dates::offset_from_birth_date(&birth).expect("birth date parses");
+            assert_eq!(
+                read_string(&output, dicom_dictionary_std::tags::PATIENT_BIRTH_DATE).as_deref(),
+                Some("19700101"),
+                "{name}: the birth date was not pinned to the epoch"
+            );
+            if let Some(study) = read_string(&source, dicom_dictionary_std::tags::STUDY_DATE) {
+                assert_eq!(
+                    read_string(&output, dicom_dictionary_std::tags::STUDY_DATE),
+                    dates::shift(&study, offset),
+                    "{name}: the study date was not moved by the patient offset"
+                );
+            }
+            eprintln!("{name}: birth date pinned to the epoch, study date moved with it");
+        }
         eprintln!(
             "{name}: {} identifying elements removed, {} -> {} bytes",
             identifiers.len(),
@@ -99,6 +117,22 @@ fn real_dicom_files_are_deidentified() {
             output.len()
         );
     }
+}
+
+fn source_birth_date(bytes: &[u8]) -> Option<String> {
+    read_string(bytes, dicom_dictionary_std::tags::PATIENT_BIRTH_DATE)
+}
+
+/// One string element of a serialized DICOM file.
+fn read_string(bytes: &[u8], tag: dicom_core::Tag) -> Option<String> {
+    let stream = if bytes.starts_with(b"DICM") {
+        bytes
+    } else {
+        &bytes[128..]
+    };
+    let object = dicom_object::from_reader(std::io::Cursor::new(stream)).ok()?;
+    let value = object.element(tag).ok()?.to_str().ok()?.trim().to_string();
+    (!value.is_empty()).then_some(value)
 }
 
 /// Elements of a real file that must not survive, read back as strings.
@@ -157,7 +191,7 @@ fn real_xml_ecg_files_are_deidentified() {
         let source_nodes = xml_nodes(&source);
         let identifying: Vec<_> = source_nodes
             .iter()
-            .filter(|(node_path, _)| xml::replacement_for(node_path, "X").is_some())
+            .filter(|(node_path, _)| !is_kept(node_path))
             .collect();
         assert!(
             !identifying.is_empty(),
@@ -168,14 +202,20 @@ fn real_xml_ecg_files_are_deidentified() {
             xml::deidentify(&source, &name, RECORD_ID).unwrap_or_else(|e| panic!("{name}: {e}"));
         let output_nodes = xml_nodes(&output);
 
-        // Every identifying node still present in the output must hold the
-        // record id; the ones that are blanked disappear entirely.
+        // Nothing outside the allowlist may keep its original value.
         for (node_path, value) in &output_nodes {
-            if xml::replacement_for(node_path, RECORD_ID).is_some() {
-                assert_eq!(
-                    value, RECORD_ID,
-                    "{name}: {node_path} still holds {value:?}"
-                );
+            match xml::policy_for(node_path) {
+                Policy::Keep | Policy::BirthDate => {}
+                Policy::RecordId => {
+                    assert_eq!(value, RECORD_ID, "{name}: {node_path} holds {value:?}")
+                }
+                Policy::UidRoot => assert!(
+                    value.starts_with(xml::uid_root()),
+                    "{name}: {node_path} kept a real uid ({value:?})"
+                ),
+                Policy::Drop | Policy::Blank => {
+                    panic!("{name}: {node_path} should be gone but holds {value:?}")
+                }
             }
         }
 
@@ -189,11 +229,13 @@ fn real_xml_ecg_files_are_deidentified() {
             }
         }
 
-        // Everything else — the recording itself — must come back untouched.
+        // Dates have their own policy, checked below; everything else — the
+        // recording itself — must come back untouched.
+        let governed = |path: &str, value: &str| !is_kept(path) || dates::parse(value).is_some();
         let kept = |nodes: &[(String, String)]| -> Vec<(String, String)> {
             nodes
                 .iter()
-                .filter(|(node_path, _)| xml::replacement_for(node_path, "X").is_none())
+                .filter(|(path, value)| !governed(path, value))
                 .cloned()
                 .collect()
         };
@@ -202,6 +244,8 @@ fn real_xml_ecg_files_are_deidentified() {
             kept(&output_nodes),
             "{name}: non-identifying content was altered"
         );
+
+        check_dates(&name, &source_nodes, &output_nodes);
 
         assert!(
             xml::validate(&output, &name).is_ok(),
@@ -213,6 +257,61 @@ fn real_xml_ecg_files_are_deidentified() {
             kept(&output_nodes).len()
         );
     }
+}
+
+/// Every date must move by one offset, the one that puts the birth date on
+/// 1970-01-01, so that the age at acquisition is preserved and the real
+/// calendar dates are gone.
+fn check_dates(name: &str, source: &[(String, String)], output: &[(String, String)]) {
+    let dated = |nodes: &[(String, String)]| -> Vec<(String, String)> {
+        nodes
+            .iter()
+            .filter(|(path, value)| is_kept(path) && dates::parse(value).is_some())
+            .cloned()
+            .collect()
+    };
+    let (src, out) = (dated(source), dated(output));
+    assert_eq!(src.len(), out.len(), "{name}: dates appeared or vanished");
+
+    let birth = src
+        .iter()
+        .find(|(path, _)| xml::is_birth_date_path(path))
+        .map(|(_, value)| value.clone());
+    let Some(birth) = birth else {
+        eprintln!("{name}: no birth date, dates left as they are");
+        return;
+    };
+
+    let offset = dates::offset_from_birth_date(&birth).expect("birth date parses");
+    let mut shifted = 0;
+
+    for ((src_path, src_value), (out_path, out_value)) in src.iter().zip(out.iter()) {
+        assert_eq!(
+            src_path, out_path,
+            "{name}: dates came back in another order"
+        );
+        let expected = if xml::is_birth_date_path(src_path) {
+            dates::as_epoch_birth_date(src_value)
+        } else {
+            dates::shift(src_value, offset).expect("shiftable")
+        };
+        assert_eq!(
+            out_value, &expected,
+            "{name}: {src_path} was not moved by the patient offset"
+        );
+        assert_ne!(
+            out_value, src_value,
+            "{name}: {src_path} kept its real value"
+        );
+        shifted += 1;
+    }
+
+    eprintln!("{name}: birth date pinned to the epoch, {shifted} dates moved with it");
+}
+
+/// A node the allowlist lets through with its own value (dates included).
+fn is_kept(path: &str) -> bool {
+    matches!(xml::policy_for(path), Policy::Keep | Policy::BirthDate)
 }
 
 /// Paths naming the patient or the staff, as opposed to the wider set the
@@ -310,4 +409,40 @@ fn real_files_are_routed_to_the_right_deidentifier() {
             assert_ne!(result.bytes, source, "{name} came back untouched");
         }
     }
+}
+
+#[test]
+fn the_leaks_found_in_the_real_recording_are_closed() {
+    let Some(dir) = test_data_dir() else {
+        eprintln!("no test_data/ — skipping");
+        return;
+    };
+    let path = dir.join("ECG.xml");
+    if !path.is_file() {
+        eprintln!("no ECG.xml — skipping");
+        return;
+    }
+
+    let source = std::fs::read(&path).expect("readable");
+    let output = xml::deidentify(&source, "ECG.xml", RECORD_ID).expect("deidentified");
+    let text = String::from_utf8(output).expect("utf-8");
+
+    // Values a denylist let through, each found in this recording.
+    for (what, needle) in [
+        (
+            "the instance OID encoding the acquisition date and time",
+            "2026623.85727",
+        ),
+        ("the device serial number", "FN-8B013991"),
+        ("the trial identifier", "26060670914"),
+        ("the free-text interpretation", "Fibrillation"),
+    ] {
+        assert!(!text.contains(needle), "{what} survived");
+    }
+
+    // …while the recording itself is intact.
+    assert!(text.contains("MDC_ECG_LEAD_I"), "lead codes were lost");
+    assert!(text.contains("SLIST_PQ"), "the sequence datatype was lost");
+    assert!(text.contains("<digits>"), "the waveform was lost");
+    assert!(text.contains(r#"code="F""#), "sex was lost");
 }

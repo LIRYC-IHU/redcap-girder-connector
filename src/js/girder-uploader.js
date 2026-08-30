@@ -723,7 +723,13 @@
         var isLocked = false;
         var isBusy = false;
         var currentMetadata = null;
-        var actionsAllowed = !!(config && config.permissions && config.permissions.canModify) && !detectReadOnlyPageState();
+        var permissions = (config && config.permissions) || {};
+        var canModify = !!permissions.canModify;
+        // A record that has not been saved has no id yet, and the record id is
+        // what the deidentifier writes into the files and what names the Girder
+        // folder. Uploading now would bake a placeholder into both.
+        var recordSaved = !!permissions.recordSaved;
+        var actionsAllowed = canModify && recordSaved && !detectReadOnlyPageState();
 
         function lockWidgetWithMessage(message) {
             isLocked = true;
@@ -1095,12 +1101,17 @@
         }
 
         if (!actionsAllowed) {
-            switchToInfoOnlyMode();
-            if (currentMetadata) {
-                statusLine.style.display = 'none';
-            } else {
+            if (canModify && !recordSaved && !currentMetadata) {
+                lockWidgetWithMessage('Save this record before uploading: files are stored under its record id.');
                 statusLine.style.display = '';
-                statusLine.textContent = 'Uploads are disabled because this instrument is read-only or locked.';
+            } else {
+                switchToInfoOnlyMode();
+                if (currentMetadata) {
+                    statusLine.style.display = 'none';
+                } else {
+                    statusLine.style.display = '';
+                    statusLine.textContent = 'Uploads are disabled because this instrument is read-only or locked.';
+                }
             }
             setDeleteAvailability(false);
         }

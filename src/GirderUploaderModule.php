@@ -51,6 +51,7 @@ class GirderUploaderModule extends AbstractExternalModule
             'fields' => array_values($fields),
             'permissions' => [
                 'canModify' => $this->userCanModifyInstrument($instrument),
+                'recordSaved' => $this->isUsableRecordId($record),
             ],
             'settings' => [
                 'chunkSize' => (int) $settings['chunkSize'],
@@ -94,6 +95,17 @@ class GirderUploaderModule extends AbstractExternalModule
             'user_id' => (string) $user_id,
             'group_id' => (int) $group_id,
         ]);
+
+        if (in_array($action, ['init-batch', 'init-file-upload', 'upload-file'], true)
+            && !$this->isUsableRecordId($record)) {
+            $this->debugAjax('rejected: the record does not exist yet', [
+                'action' => (string) $action,
+            ]);
+            return [
+                'ok' => false,
+                'error' => 'Save this record before uploading: files are stored under its record id.',
+            ];
+        }
 
         if ($action === 'init-batch') {
             if (!$this->userCanModifyInstrument((string) $instrument)) {
@@ -650,6 +662,24 @@ class GirderUploaderModule extends AbstractExternalModule
         }
 
         return in_array($formRights, ['2', '3'], true);
+    }
+
+    /**
+     * Is this a record id we can file uploads under?
+     *
+     * While a record has not been saved, REDCap hands the module a placeholder
+     * instead of an id. Uploading then would create a Girder folder that no
+     * record ever points at, and — worse — bake that placeholder into the
+     * deidentified files, where it cannot be corrected afterwards.
+     */
+    private function isUsableRecordId($record)
+    {
+        $record = trim((string) $record);
+        if ($record === '') {
+            return false;
+        }
+
+        return strpos($record, 'external-modules-temporary-record-id') === false;
     }
 
     private function sanitizePathPart($value, $fallback)

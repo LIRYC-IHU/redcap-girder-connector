@@ -121,10 +121,33 @@ fn output_is_a_readable_dicom_file() {
 }
 
 #[test]
-fn shifts_study_dates_by_a_patient_stable_offset() {
-    // Dates are not kept as-is: they are shifted back by an offset derived from
-    // the original patient id (up to 10 years). The offset is stable per
-    // patient, so intervals between that patient's studies survive.
+fn pins_the_birth_date_to_the_epoch() {
+    let output = dicom::deidentify(&dicom_fixture(), "REC-42", "MY PROJECT^REC-42").unwrap();
+
+    assert_eq!(
+        read_dicom_string(&output, tags::PATIENT_BIRTH_DATE).as_deref(),
+        Some("19700101")
+    );
+}
+
+#[test]
+fn shifts_the_study_so_the_age_is_preserved() {
+    // Same rule as the XML deidentifier: birth lands on 1970-01-01 and every
+    // other date moves with it, so age at acquisition survives and the real
+    // calendar date does not.
+    let output = dicom::deidentify(&dicom_fixture(), "REC-42", "MY PROJECT^REC-42").unwrap();
+    let study = read_dicom_string(&output, tags::STUDY_DATE).unwrap();
+
+    assert_eq!(
+        days_between("19700101", &study),
+        days_between(DICOM_BIRTH_DATE, DICOM_STUDY_DATE),
+        "age at acquisition changed (study shifted to {study})"
+    );
+    assert_ne!(study, DICOM_STUDY_DATE, "the real study date leaked");
+}
+
+#[test]
+fn moves_every_date_by_the_same_offset() {
     let january = dicom::deidentify(
         &dicom_fixture_with_study_date("20240115"),
         "REC-42",
@@ -138,36 +161,63 @@ fn shifts_study_dates_by_a_patient_stable_offset() {
     )
     .unwrap();
 
-    let january_date = read_dicom_string(&january, tags::STUDY_DATE).unwrap();
-    let february_date = read_dicom_string(&february, tags::STUDY_DATE).unwrap();
-
-    assert_ne!(january_date, "20240115", "the study date was not shifted");
-    assert_eq!(days_between(&january_date, &february_date), 31);
+    assert_eq!(
+        days_between(
+            &read_dicom_string(&january, tags::STUDY_DATE).unwrap(),
+            &read_dicom_string(&february, tags::STUDY_DATE).unwrap()
+        ),
+        31,
+        "the interval between two studies of one patient must survive"
+    );
 }
 
 #[test]
-fn drops_series_and_acquisition_dates() {
-    let output = dicom::deidentify(&dicom_fixture(), "REC-42", "MY PROJECT^REC-42").unwrap();
+fn the_shift_differs_between_patients() {
+    // The offset comes from each patient's own birth date, so two patients
+    // imaged the same day do not land on the same anonymized date.
+    let older =
+        dicom::deidentify(&dicom_fixture_with_birth_date("19400301"), "REC-1", "P^1").unwrap();
+    let younger =
+        dicom::deidentify(&dicom_fixture_with_birth_date("19800301"), "REC-2", "P^2").unwrap();
 
-    assert_eq!(read_dicom_string(&output, tags::SERIES_DATE), None);
-    assert_eq!(read_dicom_string(&output, tags::ACQUISITION_DATE), None);
+    assert_ne!(
+        read_dicom_string(&older, tags::STUDY_DATE),
+        read_dicom_string(&younger, tags::STUDY_DATE)
+    );
 }
 
-/// Days between two `YYYYMMDD` DICOM dates, via a day count from a fixed epoch.
-fn days_between(from: &str, to: &str) -> i64 {
-    fn to_days(date: &str) -> i64 {
-        let year: i64 = date[0..4].parse().unwrap();
-        let month: i64 = date[4..6].parse().unwrap();
-        let day: i64 = date[6..8].parse().unwrap();
+#[test]
+fn falls_back_to_the_library_default_without_a_birth_date() {
+    // No birth date means no age to preserve; the study date must still not be
+    // the real one.
+    let output = dicom::deidentify(
+        &dicom_fixture_without_birth_date(),
+        "REC-42",
+        "MY PROJECT^REC-42",
+    )
+    .unwrap();
 
-        // Howard Hinnant's days-from-civil algorithm.
-        let year = if month <= 2 { year - 1 } else { year };
-        let era = year.div_euclid(400);
-        let year_of_era = year - era * 400;
-        let day_of_year = (153 * (if month > 2 { month - 3 } else { month + 9 }) + 2) / 5 + day - 1;
-        let day_of_era = year_of_era * 365 + year_of_era / 4 - year_of_era / 100 + day_of_year;
-        era * 146097 + day_of_era - 719468
-    }
+    assert_eq!(read_dicom_string(&output, tags::PATIENT_BIRTH_DATE), None);
+    assert_ne!(
+        read_dicom_string(&output, tags::STUDY_DATE).as_deref(),
+        Some(DICOM_STUDY_DATE),
+        "the real study date leaked"
+    );
+}
 
-    to_days(to) - to_days(from)
+#[test]
+fn series_and_acquisition_dates_move_with_the_study() {
+    // The anonymizer removes these by default; the date policy restores them
+    // from the source, shifted, so the acquisition timeline stays coherent.
+    let output = dicom::deidentify(&dicom_fixture(), "REC-42", "MY PROJECT^REC-42").unwrap();
+    let study = read_dicom_string(&output, tags::STUDY_DATE).unwrap();
+
+    assert_eq!(
+        read_dicom_string(&output, tags::SERIES_DATE).as_deref(),
+        Some(study.as_str())
+    );
+    assert_eq!(
+        read_dicom_string(&output, tags::ACQUISITION_DATE).as_deref(),
+        Some(study.as_str())
+    );
 }

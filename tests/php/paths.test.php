@@ -75,6 +75,23 @@ return function ($t): void {
         $t->assertSame('', invoke($module, 'getSafeFileExtension', ['scan.verylongextension']));
     });
 
+    $t->test('an unsaved record cannot receive uploads', function ($t): void {
+        // REDCap hands the module a placeholder while the record does not exist
+        // yet. Filing uploads under it would create a Girder folder no record
+        // points at, and bake the placeholder into the deidentified files.
+        $module = moduleWithSettings();
+
+        $t->assertFalse(invoke($module, 'isUsableRecordId', ['']));
+        $t->assertFalse(invoke($module, 'isUsableRecordId', ['   ']));
+        $t->assertFalse(invoke($module, 'isUsableRecordId', [null]));
+        $t->assertFalse(invoke($module, 'isUsableRecordId', [
+            'external-modules-temporary-record-id-1788122427-192289319',
+        ]));
+
+        $t->assertTrue(invoke($module, 'isUsableRecordId', ['103']));
+        $t->assertTrue(invoke($module, 'isUsableRecordId', ['REC-42']));
+    });
+
     $t->test('DICOM files are recognized by extension or MIME type', function ($t): void {
         $module = moduleWithSettings();
 
