@@ -54,7 +54,7 @@ To deploy a working copy into a local REDCap, symlink `src/` into
 `redcap/modules/` under a versioned name:
 
 ```bash
-ln -s "$PWD/src" /path/to/redcap/modules/girder_uploader_v1.1.0
+ln -s "$PWD/src" /path/to/redcap/modules/girder_uploader_v1.2.0
 ```
 
 ## Tests
