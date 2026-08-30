@@ -1,0 +1,81 @@
+name: Release
+
+# REDCap versions external modules by directory name, so a release is simply a
+# zip holding a single `girder_uploader_v<VERSION>` folder, ready for
+# "Upload module ZIP" in the REDCap control center.
+#
+# To cut a release:
+#   scripts/bump-version.sh 1.2.0
+#   git commit -am "Release v1.2.0"
+#   git tag v1.2.0 && git push --follow-tags
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Build and publish the module zip
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check the tag matches the VERSION file
+        if: startsWith(github.ref, 'refs/tags/')
+        run: |
+          version="$(tr -d '[:space:]' < VERSION)"
+          tag="${GITHUB_REF_NAME#v}"
+          if [ "$version" != "$tag" ]; then
+            echo "tag $GITHUB_REF_NAME does not match VERSION ($version)" >&2
+            echo "run scripts/bump-version.sh $tag and commit before tagging" >&2
+            exit 1
+          fi
+          echo "version=$version" >> "$GITHUB_ENV"
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.2'
+          coverage: none
+
+      - name: Install the Rust toolchain
+        run: rustup toolchain install stable --profile minimal --target wasm32-unknown-unknown
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: wasm/dicom_deid
+
+      - uses: jetli/wasm-pack-action@v0.4.0
+        with:
+          version: latest
+
+      - name: Run the test suites
+        run: |
+          (cd wasm/dicom_deid && cargo test)
+          node --test "tests/js/*.test.js"
+          php tests/php/run.php
+
+      - run: scripts/package.sh
+
+      - name: Publish the release
+        if: startsWith(github.ref, 'refs/tags/')
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" \
+            --title "$GITHUB_REF_NAME" \
+            --generate-notes \
+            "dist/girder_uploader_v${version}.zip"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: girder_uploader
+          path: dist/*.zip
+          if-no-files-found: error

@@ -1,0 +1,96 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  deidentification:
+    name: Deidentification (Rust/WASM)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: wasm/dicom_deid
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install the Rust toolchain
+        run: rustup toolchain install stable --profile minimal --component rustfmt,clippy
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: wasm/dicom_deid
+
+      - run: cargo fmt --check
+      - run: cargo clippy --all-targets -- -D warnings
+      - run: cargo test
+
+  browser:
+    name: Browser logic (Node)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Check the widget parses
+        run: |
+          node --check src/js/girder-uploader-core.js
+          node --check src/js/girder-uploader.js
+          node --check src/js/deidentify-worker.js
+
+      - run: node --test "tests/js/*.test.js"
+
+  module:
+    name: REDCap module (PHP)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.2'
+          coverage: none
+
+      - name: Lint
+        run: php -l src/GirderUploaderModule.php
+
+      - run: php tests/php/run.php
+
+  package:
+    name: Package
+    runs-on: ubuntu-latest
+    needs: [deidentification, browser, module]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install the Rust toolchain
+        run: rustup toolchain install stable --profile minimal --target wasm32-unknown-unknown
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: wasm/dicom_deid
+
+      - uses: jetli/wasm-pack-action@v0.4.0
+        with:
+          version: latest
+
+      - run: scripts/package.sh
+
+      - name: Read the module version
+        id: version
+        run: echo "version=$(tr -d '[:space:]' < VERSION)" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: girder_uploader_v${{ steps.version.outputs.version }}
+          path: dist/*.zip
+          if-no-files-found: error
