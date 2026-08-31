@@ -269,4 +269,12 @@ batch; a genuine failure aborts the upload instead.
 
 ## Authors
 
-IHU Liryc — University of Bordeaux.
+Josselin Duchateau @ IHU Liryc
+
+
+## Funding
+
+This work was funded by the following grants:
+IHU Liryc ANR-10-IAHU-0004
+RHU TALENT ANR 23-RHUS-0015
+MEDITWIN consortium (France 2030)
