@@ -16,7 +16,9 @@ Supported formats:
 | XML ECG (HL7 aECG only) | root element + namespace | Everything outside an allowlist; UIDs replaced, dates shifted |
 | Schiller Holter | file magic number | Patient block, voice annotations, device UUID |
 
-Anything else is dropped from the batch rather than uploaded.
+A file in none of these formats is dropped from the batch. An XML ECG in a
+dialect other than HL7 aECG is different: it is **refused**, and the upload
+stops — see below.
 
 ## Repository layout
 
@@ -28,6 +30,7 @@ src/                     the REDCap module, exactly as deployed
   js/girder-uploader-core.js   pure browser logic (tested)
   js/deidentify-worker.js      Web Worker bridging the widget and the WASM
 wasm/dicom_deid/         Rust crate: the deidentifiers, plus their tests
+  src/dates.rs                 the date policy shared by DICOM and XML ECG
 tests/js/                Node tests for the browser logic
 tests/php/               PHP tests for the module
 scripts/                 build, package and version-bump helpers
@@ -79,7 +82,8 @@ fixed values, so they hold for any recording:
 - the file is recognized, and still parses after deidentification;
 - every value the deidentifier itself considers identifying is gone from the
   output, and patient identity does not resurface anywhere in the bytes;
-- every other value comes back byte-for-byte — the recording is untouched.
+- every other value comes back byte-for-byte — the recording is untouched —
+  dates aside, which are checked separately against the shift described below.
 
 **Never commit files placed there.** `test_data/` is in `.gitignore`; keep it
 that way.
@@ -125,7 +129,9 @@ the project settings:
 | `preserve-upload-folder-architecture` | Keep the user's folder names, or store flat under neutral names |
 
 A format whose checkbox is off is still recognized but uploaded **untouched** —
-that is an explicit opt-out, not an oversight.
+that is an explicit opt-out, not an oversight. One exception: an XML ECG in a
+dialect we cannot certify is refused whichever way `deidentify-xml-ecg` is set.
+Opting out covers the formats we can read, not one we cannot.
 
 ## How an upload works
 
@@ -137,7 +143,8 @@ that is an explicit opt-out, not an oversight.
    noise (`.DS_Store`, dotfiles, `~*`) and nested archives, and sorts the batch
    by path. Batches are capped at 9999 files.
 3. Every file goes through the WASM worker. Recognized formats are deidentified
-   (or passed through when disabled); unrecognized files are skipped.
+   (or passed through when disabled); unrecognized files are skipped, except an
+   XML ECG in an unsupported dialect, which stops the upload.
 4. The server builds a signed upload plan per file — target folder, item, stored
    name — and the browser sends chunks back against that plan. The signature is
    an HMAC over the plan keyed by the Girder API key, so the browser cannot
@@ -183,11 +190,13 @@ data silently nor leaks it. A file that is not XML at all is left to the other
 formats, so a DICOM that happens to be named `.xml` still reaches the DICOM
 deidentifier.
 
-Accepted documents are rewritten against an **allowlist**: the waveform, coded vocabulary, units, the time base,
-sex and the structural attributes HL7 requires are kept; *everything else is
-dropped*. Unknown attributes are removed rather than emptied, since an empty
-value breaks the datatype's pattern; unknown element text is emptied, keeping
-the element in place.
+Accepted documents are rewritten against an **allowlist**: the waveform, coded
+vocabulary, units, the time base, sex and the structural attributes HL7 requires
+are kept; *everything else is dropped*. Unknown attributes are removed rather
+than emptied, since an empty value breaks the datatype's pattern; unknown
+element text is emptied, keeping
+the element in place. Comments and CDATA are dropped outright — free text with
+no schema behind it.
 
 An allowlist is the only workable direction here. ECG XML is vendor-extensible,
 and while this module used a denylist a real recording carried through: the
@@ -218,10 +227,10 @@ reserves for "the traditional identifier", receives the record id. Trial and
 site extensions are dropped instead, being site information. Nothing is minted
 at random, so deidentifying a recording twice yields the same identifiers.
 
-Sex is deliberately kept in both dialects; it is analysis data. `*ExistFlag`
-attributes are kept too, since they describe structure rather than identity. The
-document is rewritten as a stream, so repeated paths — one per lead, per
-measurement — keep their own values.
+Sex is deliberately kept; it is analysis data. `*ExistFlag` attributes are kept
+too, since they describe structure rather than identity. The document is
+rewritten as a stream, so repeated paths — one per lead, per measurement — keep
+their own values.
 
 As a second guard, a document that comes out with no signal at all — an aECG
 variant the allowlist does not fully cover — is refused rather than stored
@@ -269,4 +278,12 @@ batch; a genuine failure aborts the upload instead.
 
 ## Authors
 
-IHU Liryc — University of Bordeaux.
+Josselin Duchateau @ IHU Liryc
+
+
+## Funding
+
+This work was funded by the following grants:
+IHU Liryc ANR-10-IAHU-0004
+RHU TALENT ANR 23-RHUS-0015
+MEDITWIN consortium (France 2030)
