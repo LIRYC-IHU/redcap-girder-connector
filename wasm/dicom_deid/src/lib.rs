@@ -103,18 +103,25 @@ pub fn deidentify_bytes(
         });
     }
 
-    if xml::validate(input_bytes, file_name).is_ok() {
-        let bytes = if enable_xml {
-            xml::deidentify(input_bytes, file_name, &normalized_record_id)?
-        } else {
-            input_bytes.to_vec()
-        };
+    match xml::classify(input_bytes, file_name) {
+        xml::XmlOutcome::AnnotatedEcg => {
+            let bytes = if enable_xml {
+                xml::deidentify(input_bytes, file_name, &normalized_record_id)?
+            } else {
+                input_bytes.to_vec()
+            };
 
-        return Ok(DeidentifiedFile {
-            bytes,
-            format_name: "xml".to_string(),
-            mime_type: "application/xml".to_string(),
-        });
+            return Ok(DeidentifiedFile {
+                bytes,
+                format_name: "xml".to_string(),
+                mime_type: "application/xml".to_string(),
+            });
+        }
+        // An XML ECG in a dialect we cannot certify is refused outright, and the
+        // error carries no `SKIP:` prefix so the upload stops instead of
+        // quietly dropping the file.
+        xml::XmlOutcome::Unsupported(reason) => return Err(reason),
+        xml::XmlOutcome::NotXml => {}
     }
 
     if dicom::validate(input_bytes).is_ok() {

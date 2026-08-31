@@ -13,7 +13,7 @@ Supported formats:
 | Format | Detection | What is removed |
 | --- | --- | --- |
 | DICOM | `DICM` magic code | Patient identity, institution, private tags; UIDs rehashed; dates shifted |
-| XML ECG (HL7 v2/v3, Philips) | root element + namespace | Everything outside an allowlist; UIDs replaced, dates shifted |
+| XML ECG (HL7 aECG only) | root element + namespace | Everything outside an allowlist; UIDs replaced, dates shifted |
 | Schiller Holter | file magic number | Patient block, voice annotations, device UUID |
 
 Anything else is dropped from the batch rather than uploaded.
@@ -54,7 +54,7 @@ To deploy a working copy into a local REDCap, symlink `src/` into
 `redcap/modules/` under a versioned name:
 
 ```bash
-ln -s "$PWD/src" /path/to/redcap/modules/girder_uploader_v1.3.0
+ln -s "$PWD/src" /path/to/redcap/modules/girder_uploader_v1.4.0
 ```
 
 ## Tests
@@ -90,13 +90,13 @@ REDCap identifies a module version by its **directory name**, so a release is a
 zip containing a single `girder_uploader_v<VERSION>` folder.
 
 ```bash
-scripts/bump-version.sh 1.3.0
-git commit -am "Release v1.3.0"
-git tag v1.3.0 && git push --follow-tags
+scripts/bump-version.sh 1.4.0
+git commit -am "Release v1.4.0"
+git tag v1.4.0 && git push --follow-tags
 ```
 
 The tag triggers `.github/workflows/release.yml`, which re-runs the suites,
-builds the WASM, and publishes `girder_uploader_v1.3.0.zip` on the GitHub
+builds the WASM, and publishes `girder_uploader_v1.4.0.zip` on the GitHub
 release. That zip is what you feed to REDCap's *Upload module ZIP*.
 
 To build one locally:
@@ -169,9 +169,21 @@ module writes:
 UIDs are rehashed deterministically, so instances of one study stay grouped.
 Dates follow the shared policy below.
 
-**XML ECG** recognizes HL7 v2, HL7 v3 (`AnnotatedECG`) and Philips
-(`restingecgdata`) documents by root element and namespace, and rewrites them
-against an **allowlist**: the waveform, coded vocabulary, units, the time base,
+**XML ECG** accepts one dialect: the HL7 Annotated ECG the FDA takes, recognized
+by its root element and namespace (`<AnnotatedECG xmlns="urn:hl7-org:v3">`, a
+namespace prefix on the root being equally valid). Every other XML ECG — Philips
+`restingecgdata`, GE MUSE `RestingECG`, any vendor variant — is **refused with a
+visible error that names the format**, and the upload stops.
+
+That refusal is deliberate and applies even when XML deidentification is turned
+off. The allowlist below is written against the aECG schema: applied to another
+dialect it would empty the recording, and passing such a file through untouched
+would upload identified data. Refusing is the only option that neither destroys
+data silently nor leaks it. A file that is not XML at all is left to the other
+formats, so a DICOM that happens to be named `.xml` still reaches the DICOM
+deidentifier.
+
+Accepted documents are rewritten against an **allowlist**: the waveform, coded vocabulary, units, the time base,
 sex and the structural attributes HL7 requires are kept; *everything else is
 dropped*. Unknown attributes are removed rather than emptied, since an empty
 value breaks the datatype's pattern; unknown element text is emptied, keeping
@@ -189,6 +201,15 @@ implementation guide (Appendix D) makes `AnnotatedECG/id/@root`,
 typed as an OID or UUID, so emptying it yields a document that no longer
 validates.
 
+The pseudonym lives in exactly one place: `trialSubject/id/@extension`, which
+the standard reserves for "the traditional identifier" and the schema makes
+mandatory. If the source has no `trialSubject/id`, one is **created**; if it has
+no `trialSubject` at all the file is refused, since an upload that cannot be
+traced back to its record is worse than no upload. Vendor fields duplicating the
+patient id — a `<PatientID>` under `subjectDemographicPerson`, say, which is not
+part of the aECG content model — are blanked rather than filled in, so there is
+one place to look and nothing to keep in step.
+
 The replacements come from the REDCap context, exactly as on the DICOM side:
 each `@root` becomes an arc of the Liryc OID `1.2.826.0.1.3680043.10.543` —
 `.1` for the document, `.2` for a series, `.3` for the subject, `.4` for the
@@ -202,12 +223,15 @@ attributes are kept too, since they describe structure rather than identity. The
 document is rewritten as a stream, so repeated paths — one per lead, per
 measurement — keep their own values.
 
-**The allowlist is curated against HL7 v3, the only dialect for which a real
-recording was available.** A document whose signal elements are not on the list
-would come out empty, so the deidentifier refuses it instead: the upload fails
-with a visible error naming the problem, rather than storing a gutted
-recording. If that happens on a Philips or vendor file, the fix is to add its
-signal elements to `ALLOWED_KEYS`.
+As a second guard, a document that comes out with no signal at all — an aECG
+variant the allowlist does not fully cover — is refused rather than stored
+gutted.
+
+Vendor extensions outside the aECG schema are dropped like anything else. On one
+real recording that meant a `<channel name1="I"…>` element duplicating the lead
+labels; the leads stayed identified where the standard puts them, in
+`sequence/code/@code` (`MDC_ECG_LEAD_*`). Extending the allowlist for a vendor
+element is a deliberate decision, not the default.
 
 **Schiller Holter** zeroes the voice-annotation section (technicians name the
 patient out loud), fills the demographics block, writes the record id into the

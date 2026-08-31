@@ -3,12 +3,22 @@ use quick_xml::{Reader, Writer};
 
 use crate::dates;
 
-/// XML ECG dialects the anonymizer knows how to recognize.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum XmlType {
-    Hl7V2,
-    Hl7V3,
-    PhilipsEcg,
+/// The namespace that marks an HL7 Annotated ECG, the format the FDA accepts.
+const AECG_NAMESPACE: &str = "urn:hl7-org:v3";
+const AECG_ROOT: &str = "AnnotatedECG";
+
+/// What an XML file turns out to be.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum XmlOutcome {
+    /// An HL7 aECG: the one dialect this module deidentifies.
+    AnnotatedEcg,
+    /// Not an XML document — the caller should try the other formats.
+    NotXml,
+    /// An XML document in a format we will not touch. The reason is shown to
+    /// the user, and the upload stops: silently dropping an ECG would let a
+    /// clinician believe it was uploaded, and silently passing it through would
+    /// upload identified data.
+    Unsupported(String),
 }
 
 /// UID root registered for IHU Liryc, shared with the DICOM deidentifier.
@@ -28,7 +38,7 @@ const ARC_TRIAL: &str = "4";
 /// extension. Nothing is minted at random, so deidentifying the same recording
 /// twice yields the same identifiers.
 fn uid_root_for(path: &str) -> String {
-    let path = path.to_lowercase();
+    let path = normalize_path(path).to_lowercase();
     let arc = if path.contains("trialsubject/id") {
         ARC_SUBJECT
     } else if path.contains("clinicaltrial") || path.contains("trialsite") {
@@ -115,98 +125,139 @@ const ALLOWED_KEYS: &[&str] = &[
     "sex",
     "manufacturermodelname",
     "softwarename",
-    // -- Philips `restingecgdata`; not yet checked against a real recording ---
-    "amplitude",
-    "duration",
-    "interval",
-    "leadname",
-    "leadlabel",
-    "parsedwaveforms",
-    "waveform",
 ];
 
 /// Node keys whose presence means the signal survived the allowlist.
 ///
-/// If none is kept, the dialect is one the allowlist does not cover and the
-/// output would be an empty recording; the file is rejected rather than
-/// uploaded gutted.
-const SIGNAL_KEYS: &[&str] = &[
-    "digits",
-    "sequence/value",
-    "parsedwaveforms",
-    "waveform",
-    "amplitude",
-    "value/@value",
-];
+/// If none is kept, the document is an aECG the allowlist does not fully cover
+/// — a vendor variant, say — and the output would be an empty recording; the
+/// file is rejected rather than uploaded gutted.
+const SIGNAL_KEYS: &[&str] = &["digits", "sequence/value", "value/@value"];
 
 /// Identity that a generic allowlist rule would otherwise let through.
+///
+/// Vendor `PatientID` elements are covered by the allowlist falling through to
+/// [`Policy::Blank`]: the pseudonym lives in exactly one place, the standard
+/// `trialSubject/id/@extension`, so a duplicate in a vendor extension is
+/// removed rather than filled in.
 ///
 /// Checked before the allowlist and matched anywhere in the path: `@code` has
 /// to be allowed broadly (lead codes, annotation codes, control variables,
 /// sex), which would otherwise carry `raceCode/@code` with it.
 const DENIED_KEYS: &[&str] = &["racecode", "ethnicgroupcode"];
 
-/// Path fragments (lowercased) naming a patient identifier.
-const PATIENT_ID_FIELDS: &[&str] = &["patientid", "secondpatientid", "viperuniquepatientid"];
-
 /// Path fragments (lowercased) holding the patient's birth date.
 const BIRTH_DATE_FIELDS: &[&str] = &["birthtime", "birthdate", "dateofbirth"];
 
 const UTF8_BOM: &[u8] = b"\xef\xbb\xbf";
 
+/// Whether this file is an HL7 aECG we can deidentify.
 pub fn validate(input_bytes: &[u8], file_name: &str) -> Result<(), String> {
-    detect_type(input_bytes, file_name)
-        .map(|_| ())
-        .map_err(|e| e.strip_prefix("SKIP: ").unwrap_or(&e).to_string())
+    match classify(input_bytes, file_name) {
+        XmlOutcome::AnnotatedEcg => Ok(()),
+        XmlOutcome::NotXml => Err("input is not an XML ECG file".to_string()),
+        XmlOutcome::Unsupported(reason) => Err(reason),
+    }
 }
 
 pub fn deidentify(input_bytes: &[u8], file_name: &str, record_id: &str) -> Result<Vec<u8>, String> {
-    detect_type(input_bytes, file_name)?;
-    let offset = find_birth_date(input_bytes)
-        .as_deref()
-        .and_then(dates::offset_from_birth_date);
-    rewrite(input_bytes, record_id.trim(), offset)
+    validate(input_bytes, file_name)?;
+    let scan = scan_document(input_bytes);
+    rewrite(input_bytes, record_id.trim(), &scan)
 }
 
-/// Recognize the ECG dialect from the root element name and its `xmlns`.
-pub fn detect_type(input_bytes: &[u8], file_name: &str) -> Result<XmlType, String> {
+/// Decide what an XML file is, from its root element and namespace.
+///
+/// Only the HL7 Annotated ECG is accepted. Vendor formats — Philips
+/// `restingecgdata`, GE MUSE `RestingECG` and the like — are refused rather
+/// than processed: the allowlist is written against the aECG schema, so
+/// applying it to another dialect would empty the recording, and passing it
+/// through would upload identified data.
+pub fn classify(input_bytes: &[u8], file_name: &str) -> XmlOutcome {
     if !file_name.to_lowercase().ends_with(".xml") {
-        return Err("SKIP: input is not an XML ECG file".to_string());
+        return XmlOutcome::NotXml;
     }
 
+    let Some(root) = read_root_element(input_bytes) else {
+        // Named `.xml` but not XML at all: leave it to the other formats.
+        return XmlOutcome::NotXml;
+    };
+
+    let (prefix, local_name) = match root.name.split_once(':') {
+        Some((prefix, local)) => (prefix, local),
+        None => ("", root.name.as_str()),
+    };
+
+    let declaration = if prefix.is_empty() {
+        "xmlns".to_string()
+    } else {
+        format!("xmlns:{prefix}")
+    };
+    let namespace = root
+        .attributes
+        .iter()
+        .find(|(key, _)| key == &declaration)
+        .map(|(_, value)| value.as_str())
+        .unwrap_or_default();
+
+    if local_name == AECG_ROOT && namespace == AECG_NAMESPACE {
+        return XmlOutcome::AnnotatedEcg;
+    }
+
+    XmlOutcome::Unsupported(format!(
+        "{file_name} is {}, not an HL7 Annotated ECG. Only the HL7 aECG format \
+         (<{AECG_ROOT} xmlns=\"{AECG_NAMESPACE}\">) can be deidentified; remove the file from \
+         the upload or ask for its format to be supported.",
+        describe_dialect(local_name, namespace)
+    ))
+}
+
+/// Name the dialect in the refusal, when it is one we recognize.
+fn describe_dialect(local_name: &str, namespace: &str) -> String {
+    if namespace.contains("medical.philips.com") || local_name == "restingecgdata" {
+        return "a Philips resting ECG".to_string();
+    }
+    if local_name.eq_ignore_ascii_case("RestingECG") {
+        return "a GE MUSE ECG".to_string();
+    }
+    if local_name == AECG_ROOT {
+        return format!("an {AECG_ROOT} in namespace {namespace:?}");
+    }
+
+    format!("an XML document rooted at <{local_name}>")
+}
+
+struct RootElement {
+    name: String,
+    attributes: Vec<(String, String)>,
+}
+
+/// The first element of a document, with its attributes.
+fn read_root_element(input_bytes: &[u8]) -> Option<RootElement> {
     let mut reader = Reader::from_reader(strip_bom(input_bytes));
 
     loop {
-        let event = reader
-            .read_event()
-            .map_err(|e| format!("SKIP: XML parsing failed: {e}"))?;
-
-        let root = match event {
-            Event::Start(ref e) => e.to_owned(),
-            Event::Empty(ref e) => e.to_owned(),
-            Event::Eof => break,
+        let element = match reader.read_event() {
+            Ok(Event::Start(e)) => e.to_owned(),
+            Ok(Event::Empty(e)) => e.to_owned(),
+            Ok(Event::Eof) | Err(_) => return None,
             _ => continue,
         };
 
-        let name = String::from_utf8_lossy(root.name().as_ref()).to_string();
-        let namespace = root
-            .attributes()
-            .flatten()
-            .find(|attr| attr.key.as_ref() == b"xmlns")
-            .map(|attr| attr.unescape_value().unwrap_or_default().to_string())
-            .unwrap_or_default();
-
-        // Only the root element is inspected: a nested `AnnotatedECG` is not a
-        // document we know how to anonymize.
-        return match (name.as_str(), namespace.as_str()) {
-            ("AnnotatedECG", "urn:hl7-org:v2") => Ok(XmlType::Hl7V2),
-            ("AnnotatedECG", "urn:hl7-org:v3") => Ok(XmlType::Hl7V3),
-            ("restingecgdata", ns) if ns.contains("medical.philips.com") => Ok(XmlType::PhilipsEcg),
-            _ => Err("SKIP: unsupported XML ECG format".to_string()),
-        };
+        return Some(RootElement {
+            name: String::from_utf8_lossy(element.name().as_ref()).to_string(),
+            attributes: element
+                .attributes()
+                .flatten()
+                .map(|attr| {
+                    (
+                        String::from_utf8_lossy(attr.key.as_ref()).to_string(),
+                        attr.unescape_value().unwrap_or_default().to_string(),
+                    )
+                })
+                .collect(),
+        });
     }
-
-    Err("SKIP: unsupported XML ECG format".to_string())
 }
 
 pub fn is_birth_date_path(path: &str) -> bool {
@@ -214,15 +265,28 @@ pub fn is_birth_date_path(path: &str) -> bool {
     BIRTH_DATE_FIELDS.iter().any(|field| path.contains(field))
 }
 
-fn is_patient_id_path(path: &str) -> bool {
-    let path = path.to_lowercase();
-    PATIENT_ID_FIELDS.iter().any(|field| path.contains(field))
+/// Drop namespace prefixes from element names.
+///
+/// A prefixed root (`<hl7:AnnotatedECG xmlns:hl7="urn:hl7-org:v3">`) is as valid
+/// as the usual default namespace, and then every element carries the prefix.
+/// Attribute names keep theirs: `xsi:type` and `xmlns:*` are meaningful.
+fn normalize_path(path: &str) -> String {
+    path.split('/')
+        .map(|segment| {
+            if segment.starts_with('@') {
+                segment
+            } else {
+                segment.rsplit(':').next().unwrap_or(segment)
+            }
+        })
+        .collect::<Vec<_>>()
+        .join("/")
 }
 
 /// The keys a node's path is matched against: its last segment, and its last
 /// two joined.
 fn node_keys(path: &str) -> (String, String) {
-    let path = path.to_lowercase();
+    let path = normalize_path(path).to_lowercase();
     let mut segments = path.rsplit('/');
     let last = segments.next().unwrap_or("").to_string();
     let parent = segments.next().unwrap_or("");
@@ -244,7 +308,7 @@ fn node_keys(path: &str) -> (String, String) {
 /// the standard reserves for "the traditional identifier", receives the REDCap
 /// record id.
 pub fn policy_for(path: &str) -> Policy {
-    let lowered = path.to_lowercase();
+    let lowered = normalize_path(path).to_lowercase();
     let (last, pair) = node_keys(&lowered);
     let is_attribute = last.starts_with('@');
 
@@ -262,9 +326,6 @@ pub fn policy_for(path: &str) -> Policy {
         };
     }
 
-    if is_patient_id_path(&lowered) {
-        return Policy::RecordId;
-    }
     if is_birth_date_path(&lowered) {
         return Policy::BirthDate;
     }
@@ -304,35 +365,52 @@ fn is_signal(path: &str) -> bool {
     SIGNAL_KEYS.contains(&last.as_str()) || SIGNAL_KEYS.contains(&pair.as_str())
 }
 
-/// Read the patient's birth date, which sets the offset for every other date.
+/// What a first pass over the document needs to establish.
 ///
-/// A separate pass because the rewriter is a single-pass stream and the offset
-/// has to be known before the first date is written.
-fn find_birth_date(input_bytes: &[u8]) -> Option<String> {
+/// The rewriter writes as it reads, so anything that depends on the document as
+/// a whole — the date offset, and whether the identity anchors are there to be
+/// filled in or have to be created — has to be known before the first byte goes
+/// out.
+#[derive(Debug, Default)]
+struct DocumentScan {
+    birth_date: Option<String>,
+    has_trial_subject_id: bool,
+}
+
+fn scan_document(input_bytes: &[u8]) -> DocumentScan {
     let mut reader = Reader::from_reader(strip_bom(input_bytes));
     let mut path: Vec<String> = Vec::new();
+    let mut scan = DocumentScan::default();
+
+    fn note(scan: &mut DocumentScan, path: &[String]) {
+        let joined = normalize_path(&path.join("/")).to_lowercase();
+        if joined.ends_with("trialsubject/id") {
+            scan.has_trial_subject_id = true;
+        }
+    }
 
     loop {
         match reader.read_event() {
             Ok(Event::Start(e)) => {
                 path.push(String::from_utf8_lossy(e.name().as_ref()).to_string());
-                if let Some(found) = birth_date_attribute(&e, &path) {
-                    return Some(found);
+                note(&mut scan, &path);
+                if scan.birth_date.is_none() {
+                    scan.birth_date = birth_date_attribute(&e, &path);
                 }
             }
             Ok(Event::Empty(e)) => {
                 path.push(String::from_utf8_lossy(e.name().as_ref()).to_string());
-                let found = birth_date_attribute(&e, &path);
-                path.pop();
-                if found.is_some() {
-                    return found;
+                note(&mut scan, &path);
+                if scan.birth_date.is_none() {
+                    scan.birth_date = birth_date_attribute(&e, &path);
                 }
+                path.pop();
             }
             Ok(Event::Text(e)) => {
-                if is_birth_date_path(&path.join("/")) {
+                if scan.birth_date.is_none() && is_birth_date_path(&path.join("/")) {
                     let text = e.unescape().unwrap_or_default().trim().to_string();
                     if dates::parse(&text).is_some() {
-                        return Some(text);
+                        scan.birth_date = Some(text);
                     }
                 }
             }
@@ -345,7 +423,7 @@ fn find_birth_date(input_bytes: &[u8]) -> Option<String> {
         }
     }
 
-    None
+    scan
 }
 
 /// A birth date carried by one of an element's attributes, if any.
@@ -373,6 +451,38 @@ struct Rewriter {
     record_id: String,
     date_offset: Option<i64>,
     signal_kept: usize,
+    /// The source had no `trialSubject/id`, so one has to be written: the aECG
+    /// schema requires it, and it is where the pseudonym belongs. Without it the
+    /// upload would carry nothing tying it back to the REDCap record.
+    missing_subject_id: bool,
+}
+
+/// Write `<id root="…" extension="…"/>` for the subject, in the document's own
+/// namespace prefix.
+fn write_subject_id(
+    writer: &mut Writer<Vec<u8>>,
+    prefix: &str,
+    record_id: &str,
+) -> Result<(), String> {
+    let mut element = BytesStart::new(format!("{prefix}id"));
+    element.push_attribute(("root", uid_root_for("trialSubject/id").as_str()));
+    element.push_attribute(("extension", record_id));
+
+    writer
+        .write_event(Event::Empty(element))
+        .map_err(|err| format!("SKIP: XML subject-id write failed: {err}"))
+}
+
+/// The namespace prefix an element carries, `""` when it has none.
+fn tag_prefix(tag: &str) -> &str {
+    match tag.find(':') {
+        Some(index) => &tag[..=index],
+        None => "",
+    }
+}
+
+fn is_trial_subject(tag: &str) -> bool {
+    normalize_path(tag).eq_ignore_ascii_case("trialSubject")
 }
 
 impl Rewriter {
@@ -436,11 +546,7 @@ impl Rewriter {
 /// repeat the same element path many times (one per lead, per measurement…)
 /// with different values, so a path-keyed value map would overwrite every
 /// occurrence with the value of the last one.
-fn rewrite(
-    input_bytes: &[u8],
-    record_id: &str,
-    date_offset: Option<i64>,
-) -> Result<Vec<u8>, String> {
+fn rewrite(input_bytes: &[u8], record_id: &str, scan: &DocumentScan) -> Result<Vec<u8>, String> {
     let body = strip_bom(input_bytes);
     let mut reader = Reader::from_reader(body);
     let mut output = Vec::new();
@@ -453,8 +559,12 @@ fn rewrite(
     let mut path: Vec<String> = Vec::new();
     let mut state = Rewriter {
         record_id: record_id.to_string(),
-        date_offset,
+        date_offset: scan
+            .birth_date
+            .as_deref()
+            .and_then(dates::offset_from_birth_date),
         signal_kept: 0,
+        missing_subject_id: !scan.has_trial_subject_id,
     };
 
     loop {
@@ -471,15 +581,35 @@ fn rewrite(
                 writer
                     .write_event(Event::Start(element))
                     .map_err(|err| format!("SKIP: XML start-element write failed: {err}"))?;
+
+                if state.missing_subject_id && is_trial_subject(&tag) {
+                    // `id` comes first in the schema's content model.
+                    write_subject_id(&mut writer, tag_prefix(&tag), &state.record_id)?;
+                    state.missing_subject_id = false;
+                }
             }
             Ok(Event::Empty(e)) => {
                 let tag = String::from_utf8_lossy(e.name().as_ref()).to_string();
                 let mut element_path = path.clone();
                 element_path.push(tag.clone());
                 let element = state.attributes(&e, &tag, &element_path);
-                writer
-                    .write_event(Event::Empty(element))
-                    .map_err(|err| format!("SKIP: XML empty-element write failed: {err}"))?;
+
+                if state.missing_subject_id && is_trial_subject(&tag) {
+                    // A self-closing `<trialSubject/>` has to be opened up to
+                    // hold the id the schema requires.
+                    writer
+                        .write_event(Event::Start(element))
+                        .map_err(|err| format!("SKIP: XML start-element write failed: {err}"))?;
+                    write_subject_id(&mut writer, tag_prefix(&tag), &state.record_id)?;
+                    writer
+                        .write_event(Event::End(BytesEnd::new(tag.clone())))
+                        .map_err(|err| format!("SKIP: XML end-element write failed: {err}"))?;
+                    state.missing_subject_id = false;
+                } else {
+                    writer
+                        .write_event(Event::Empty(element))
+                        .map_err(|err| format!("SKIP: XML empty-element write failed: {err}"))?;
+                }
             }
             Ok(Event::Text(e)) => {
                 let original = e.unescape().unwrap_or_default().to_string();
@@ -517,6 +647,16 @@ fn rewrite(
             Ok(Event::Eof) => break,
             Err(err) => return Err(format!("SKIP: XML serialization failed: {err}")),
         }
+    }
+
+    if state.missing_subject_id {
+        // Every uploaded recording has to carry the record it belongs to, and
+        // the schema requires the element that holds it.
+        return Err(
+            "XML ECG deidentification could not attach the record id: the document has no \
+             trialSubject element, which the HL7 aECG schema requires."
+                .to_string(),
+        );
     }
 
     if state.signal_kept == 0 {

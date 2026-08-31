@@ -108,7 +108,10 @@ fn falls_back_to_a_placeholder_when_the_record_has_no_id() {
     .unwrap();
 
     let text = String::from_utf8(output.bytes).unwrap();
-    assert!(text.contains("<patientId>UNASSIGNED_RECORD</patientId>"));
+    assert!(
+        text.contains(r#"extension="UNASSIGNED_RECORD""#),
+        "got {text}"
+    );
     assert!(!text.contains("PHI-PATIENT-0001"));
 }
 
@@ -116,4 +119,29 @@ fn falls_back_to_a_placeholder_when_the_record_has_no_id() {
 fn a_dicom_file_is_not_mistaken_for_an_xml_ecg() {
     let result = run(&dicom_fixture(), "weird-name.xml", "REC-42", ALL).unwrap();
     assert_eq!(result.format_name, "dicom");
+}
+
+#[test]
+fn an_unsupported_xml_ecg_stops_the_upload() {
+    // Not `SKIP:`: dropping the file silently would let a clinician believe the
+    // ECG was uploaded, and passing it through would upload identified data.
+    let error = run(philips_fixture().as_bytes(), "ecg.xml", "REC-42", ALL).unwrap_err();
+
+    assert!(!error.starts_with("SKIP:"), "got {error}");
+    assert!(error.contains("Philips"), "got {error}");
+}
+
+#[test]
+fn an_unsupported_xml_is_refused_even_with_deidentification_disabled() {
+    // Turning XML deidentification off is an opt-out for the formats we can
+    // certify, not a licence to upload a dialect we cannot read.
+    let error = run(
+        philips_fixture().as_bytes(),
+        "ecg.xml",
+        "REC-42",
+        (true, false, true),
+    )
+    .unwrap_err();
+
+    assert!(!error.starts_with("SKIP:"), "got {error}");
 }

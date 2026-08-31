@@ -1,5 +1,45 @@
 # Changelog
 
+## 1.4.0
+
+### Changed — deidentification
+
+- **Only the HL7 Annotated ECG is accepted now.** The dialect is decided from
+  the root element and namespace (`<AnnotatedECG xmlns="urn:hl7-org:v3">`), and
+  every other XML ECG — Philips `restingecgdata`, GE MUSE `RestingECG`, vendor
+  variants — is refused with a visible error naming the format, including when
+  XML deidentification is turned off.
+
+  The allowlist is written against the aECG schema. Applied to another dialect
+  it empties the recording, and 1.3.0 would have done exactly that to a Philips
+  file without tripping any guard: `parsedwaveforms` happened to be on the list,
+  so the waveform survived while every measurement and interpretation was
+  silently blanked. Refusing is the only outcome that neither destroys data
+  quietly nor uploads identified data.
+
+  A file that is not XML is still left to the other formats, so a DICOM named
+  `.xml` reaches the DICOM deidentifier as before.
+
+- **The record id is now guaranteed to reach every accepted ECG.** It goes into
+  `trialSubject/id/@extension` — the location the standard reserves for it and
+  the schema makes mandatory — and that element is created when the source lacks
+  it. A document with no `trialSubject` at all is refused: an upload that cannot
+  be traced back to its record is worse than no upload.
+- Vendor fields duplicating the patient id, such as a `<PatientID>` under
+  `subjectDemographicPerson`, are blanked instead of being filled with the
+  record. `subjectDemographicPerson` has a fixed content model in the aECG
+  schema — `name`, `administrativeGenderCode`, `birthTime`, `raceCode` — so
+  writing a `PatientID` into it would make a conformant document invalid.
+
+### Fixed
+
+- An aECG that declares the HL7 namespace **through a prefix** on the root
+  (`<hl7:AnnotatedECG xmlns:hl7="urn:hl7-org:v3">`) was accepted and then
+  emptied, because every element carried the prefix and no allowlist key
+  matched. Namespace prefixes are now stripped from element names before
+  matching; attribute prefixes are kept, `xsi:type` and `xmlns:*` being
+  meaningful.
+
 ## 1.3.0
 
 ### Changed — deidentification

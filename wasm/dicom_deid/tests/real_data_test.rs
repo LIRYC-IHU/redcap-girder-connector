@@ -182,10 +182,10 @@ fn real_xml_ecg_files_are_deidentified() {
         let name = path.file_name().unwrap().to_string_lossy().to_string();
         let source = std::fs::read(&path).expect("readable");
 
-        assert!(
-            xml::validate(&source, &name).is_ok(),
-            "{name}: not recognized as an XML ECG ({:?})",
-            xml::detect_type(&source, &name)
+        assert_eq!(
+            xml::classify(&source, &name),
+            xml::XmlOutcome::AnnotatedEcg,
+            "{name}: not recognized as an HL7 Annotated ECG"
         );
 
         let source_nodes = xml_nodes(&source);

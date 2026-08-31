@@ -235,6 +235,7 @@ pub fn hl7_v3_fixture() -> String {
   <id root="1.2.840.113619.2.999" extension="STUDY-1"/>
   <componentOf>
     <subject>
+    <trialSubject>
       <patientId>PHI-PATIENT-0001</patientId>
       <secondPatientId>SSN-123-456-789</secondPatientId>
       <firstName>Marie</firstName>
@@ -251,6 +252,7 @@ pub fn hl7_v3_fixture() -> String {
       <technician>NURSE^ALICE</technician>
       <doctor>PROF^BERNARD</doctor>
       <birthTime value="19540212"/>
+    </trialSubject>
     </subject>
   </componentOf>
   <component>
@@ -271,8 +273,8 @@ pub fn hl7_v3_fixture() -> String {
     .to_string()
 }
 
-/// Philips `restingecgdata` fixture, including a `*ExistFlag` attribute that
-/// must survive and a repeated measurement path.
+/// Philips `restingecgdata` fixture — a vendor format the deidentifier refuses,
+/// kept here so the refusal itself is covered.
 pub fn philips_fixture() -> String {
     r#"<?xml version="1.0" encoding="UTF-8"?>
 <restingecgdata xmlns="http://www3.medical.philips.com" version="1.03">
