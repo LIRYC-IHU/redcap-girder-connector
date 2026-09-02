@@ -26,6 +26,48 @@
     /** How many files are described individually in the stored metadata. */
     var STORED_FILE_SAMPLE_LIMIT = 10;
 
+    /**
+     * A file the batch could not take, with the reason.
+     *
+     * One bad file must not cancel the rest — a DICOM archive routinely carries
+     * a DICOMDIR, a README or a viewer's XML alongside the images — but a
+     * rejection must never be silent either: the user has to be able to see
+     * which file did not make it and why, after the fact.
+     */
+    function rejection(file, stage, reason) {
+        return {
+            name: getFileDisplayName(file) || String((file && file.name) || 'unknown file'),
+            stage: String(stage || 'deidentification'),
+            reason: String((reason && reason.message) || reason || 'Unknown error')
+        };
+    }
+
+    function copyRejection(entry) {
+        if (!entry || typeof entry !== 'object') {
+            return null;
+        }
+
+        return {
+            name: entry.name || 'unknown file',
+            stage: entry.stage || 'deidentification',
+            reason: entry.reason || 'Unknown error'
+        };
+    }
+
+    /** One line summarizing what the batch left behind. */
+    function summarizeOutcome(uploadedCount, skippedCount, rejected) {
+        var parts = [uploadedCount + ' file' + (uploadedCount === 1 ? '' : 's') + ' uploaded'];
+        if (skippedCount > 0) {
+            parts.push(skippedCount + ' skipped (unsupported format)');
+        }
+        var rejectedCount = Array.isArray(rejected) ? rejected.length : Number(rejected || 0);
+        if (rejectedCount > 0) {
+            parts.push(rejectedCount + ' rejected');
+        }
+
+        return parts.join(', ') + '.';
+    }
+
     function sanitizePathPart(value, fallback) {
         var text = String(value || '').trim();
         if (!text) {
@@ -201,6 +243,42 @@
         };
     }
 
+    /** The rejected list carried in the stored metadata, bounded like the files. */
+    function buildRejectedSample(payload) {
+        var rejected = payload && Array.isArray(payload.rejectedFiles) ? payload.rejectedFiles : [];
+        var count = Number(payload && payload.rejectedCount);
+        if (!isFinite(count) || count < rejected.length) {
+            count = rejected.length;
+        }
+
+        return {
+            rejectedFiles: rejected.slice(0, STORED_FILE_SAMPLE_LIMIT).map(copyRejection).filter(Boolean),
+            rejectedCount: count
+        };
+    }
+
+    /**
+     * Carry the rejections of `previous` into a refreshed snapshot.
+     *
+     * Rejections record what happened while uploading; Girder has no idea they
+     * exist, so a snapshot rebuilt from the folder listing would silently drop
+     * them and the user would lose the trace of the files left behind.
+     */
+    function carryRejectionsForward(previous, refreshed) {
+        if (!refreshed || typeof refreshed !== 'object') {
+            return refreshed;
+        }
+
+        var carried = buildRejectedSample(previous || {});
+        if (!carried.rejectedCount) {
+            return refreshed;
+        }
+
+        refreshed.rejectedFiles = carried.rejectedFiles;
+        refreshed.rejectedCount = carried.rejectedCount;
+        return refreshed;
+    }
+
     function buildUploadSummary(payload) {
         var files = payload && Array.isArray(payload.uploadedFiles) ? payload.uploadedFiles : [];
         var existingSummary = payload && payload.uploadSummary && typeof payload.uploadSummary === 'object'
@@ -253,6 +331,13 @@
             normalized.totalSizeBytes = Number(normalized.uploadSummary.totalSizeBytes || 0);
         }
 
+        if (!Array.isArray(normalized.rejectedFiles)) {
+            normalized.rejectedFiles = [];
+        }
+        if (!isFinite(Number(normalized.rejectedCount)) || Number(normalized.rejectedCount) < normalized.rejectedFiles.length) {
+            normalized.rejectedCount = normalized.rejectedFiles.length;
+        }
+
         if (!normalized.girder.parentFolderUrl) {
             normalized.girder.parentFolderUrl = buildFolderUrl(normalized.girder);
         }
@@ -270,6 +355,7 @@
         }
 
         var summary = buildUploadSummary(payload);
+        var rejected = buildRejectedSample(payload);
         var girder = payload.girder && typeof payload.girder === 'object' ? payload.girder : {};
         return {
             version: payload.version || 1,
@@ -278,6 +364,8 @@
             uploadedFiles: summary.sampleFiles,
             uploadSummary: summary,
             totalSizeBytes: summary.totalSizeBytes,
+            rejectedFiles: rejected.rejectedFiles,
+            rejectedCount: rejected.rejectedCount,
             uploadState: payload.uploadState || null,
             girder: {
                 baseUrl: girder.baseUrl || null,
@@ -309,6 +397,10 @@
         isZipFile: isZipFile,
         isLikelyDicomFile: isLikelyDicomFile,
         normalizeUploadFiles: normalizeUploadFiles,
+        rejection: rejection,
+        summarizeOutcome: summarizeOutcome,
+        buildRejectedSample: buildRejectedSample,
+        carryRejectionsForward: carryRejectionsForward,
         buildPatientName: buildPatientName,
         buildDeidentifyRequest: buildDeidentifyRequest,
         isSkipError: isSkipError,

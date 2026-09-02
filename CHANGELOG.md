@@ -1,5 +1,22 @@
 # Changelog
 
+## 1.4.1
+
+### Fixed
+
+- **One bad file no longer cancels the whole transfer.** A file the worker
+  refuses — an XML ECG in an unsupported dialect, most often — aborted the
+  entire batch, so a single stray `DICOMDIR`, README or viewer XML sitting in a
+  DICOM archive lost a thousand-file upload. Rejections are now per file, and so
+  are transfer failures: the rest of the batch goes through.
+- Rejections stay visible. Each one is recorded with its file path, the stage it
+  failed at and the reason, listed in the widget and stored in the field
+  alongside the uploaded files, so it survives a page reload. The batch fails
+  outright only when nothing could be uploaded, and the message then carries the
+  first reason.
+- The stored Girder reference now points at a file that actually landed; it
+  could previously describe the last *attempted* upload when that one failed.
+
 ## 1.4.0
 
 ### Changed — deidentification

@@ -84,3 +84,93 @@ test('sizes are rendered in human units', () => {
     assert.equal(core.formatSize(1024), '1.00 KB');
     assert.equal(core.formatSize(10 * 1024 * 1024), '10.00 MB');
 });
+
+test('files the batch could not take are recorded, not lost', () => {
+    // A DICOM archive routinely carries a DICOMDIR or a viewer's XML. One of
+    // those must not cancel the upload — but it must not vanish either.
+    const stored = core.buildStoredMetadataPayload({
+        uploadedFiles: uploadedFiles(3),
+        rejectedFiles: [
+            { name: 'study/viewer.xml', stage: 'deidentification', reason: 'is a GE MUSE ECG, not an HL7 Annotated ECG' },
+            { name: 'study/0007.dcm', stage: 'upload', reason: 'Girder request failed (502)' }
+        ],
+        girder: { baseUrl: 'https://girder.example.org', parentFolderId: 'abc123' }
+    });
+
+    assert.equal(stored.uploadSummary.fileCount, 3);
+    assert.equal(stored.rejectedCount, 2);
+    assert.deepEqual(stored.rejectedFiles.map(r => r.name), ['study/viewer.xml', 'study/0007.dcm']);
+    assert.equal(stored.rejectedFiles[0].stage, 'deidentification');
+    assert.equal(stored.rejectedFiles[1].reason, 'Girder request failed (502)');
+});
+
+test('the rejected list is bounded like the file list', () => {
+    const many = Array.from({ length: 40 }, (_, i) => ({
+        name: `junk-${i}.xml`, stage: 'deidentification', reason: 'unsupported'
+    }));
+    const stored = core.buildStoredMetadataPayload({ uploadedFiles: uploadedFiles(1), rejectedFiles: many });
+
+    assert.equal(stored.rejectedFiles.length, core.STORED_FILE_SAMPLE_LIMIT);
+    assert.equal(stored.rejectedCount, 40, 'the true count must survive the sampling');
+});
+
+test('a rejection carries the file path and the reason', () => {
+    const entry = core.rejection(
+        { name: '0007.dcm', girderRelativePath: 'study/series/0007.dcm' },
+        'upload',
+        new Error('Girder request failed (502)')
+    );
+
+    assert.deepEqual(entry, {
+        name: 'study/series/0007.dcm',
+        stage: 'upload',
+        reason: 'Girder request failed (502)'
+    });
+});
+
+test('the outcome line accounts for every file', () => {
+    assert.equal(core.summarizeOutcome(12, 0, []), '12 files uploaded.');
+    assert.equal(core.summarizeOutcome(1, 0, []), '1 file uploaded.');
+    assert.equal(
+        core.summarizeOutcome(10, 2, [{ name: 'a' }, { name: 'b' }]),
+        '10 files uploaded, 2 skipped (unsupported format), 2 rejected.'
+    );
+});
+
+test('a legacy payload without rejections normalizes cleanly', () => {
+    const normalized = core.normalizeMetadataPayload({
+        uploadedFiles: uploadedFiles(2),
+        girder: { baseUrl: 'https://girder.example.org', parentFolderId: 'abc123' }
+    });
+
+    assert.deepEqual(normalized.rejectedFiles, []);
+    assert.equal(normalized.rejectedCount, 0);
+});
+
+test('a refresh from Girder does not erase the rejections', () => {
+    // Girder has no idea which files we refused; a snapshot rebuilt from the
+    // folder listing would drop them and lose the trace.
+    const stored = core.buildStoredMetadataPayload({
+        uploadedFiles: uploadedFiles(2),
+        rejectedFiles: [{ name: 'viewer.xml', stage: 'deidentification', reason: 'is a GE MUSE ECG' }],
+        girder: { baseUrl: 'https://girder.example.org', parentFolderId: 'abc123' }
+    });
+    const fromGirder = core.normalizeMetadataPayload({
+        uploadedFiles: uploadedFiles(2),
+        girder: { baseUrl: 'https://girder.example.org', parentFolderId: 'abc123' }
+    });
+
+    assert.equal(fromGirder.rejectedCount, 0, 'the server snapshot starts without them');
+    core.carryRejectionsForward(stored, fromGirder);
+
+    assert.equal(fromGirder.rejectedCount, 1);
+    assert.equal(fromGirder.rejectedFiles[0].name, 'viewer.xml');
+});
+
+test('carrying forward leaves a clean payload alone', () => {
+    const fromGirder = { uploadedFiles: [], rejectedFiles: [], rejectedCount: 0 };
+    core.carryRejectionsForward({ rejectedFiles: [] }, fromGirder);
+
+    assert.equal(fromGirder.rejectedCount, 0);
+    assert.equal(core.carryRejectionsForward({}, null), null);
+});

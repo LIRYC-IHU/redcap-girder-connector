@@ -230,7 +230,16 @@
         return deidentifyBridge;
     }
 
-    async function deidentifyFilesIfNeeded(files, config, statusLine, deidentifyProgressBar) {
+    /**
+     * Deidentify a batch, one file at a time.
+     *
+     * A file the worker refuses is set aside, not fatal: a DICOM archive
+     * routinely carries a DICOMDIR, a README or a viewer's XML next to the
+     * images, and one of those must not cancel a thousand-file upload. The
+     * rejections are returned so the caller can show and store them — dropping
+     * a file quietly is exactly what we are trying to avoid.
+     */
+    async function deidentifyFilesIfNeeded(files, config, statusLine, deidentifyProgressBar, rejected) {
         var bridge = getDeidentifyBridge(config);
         if (!bridge) {
             throw new Error('Deidentification worker is unavailable.');
@@ -256,14 +265,17 @@
             } catch (error) {
                 if (core.isSkipError(error)) {
                     skippedCount += 1;
-                    continue;
+                } else {
+                    rejected.push(core.rejection(file, 'deidentification', error));
+                    debug('File rejected during deidentification', { file: relativePath, error: String(error) });
                 }
-                throw error;
+                continue;
             }
 
             var outputBytes = workerResult && workerResult.bytes ? workerResult.bytes : null;
             if (!outputBytes) {
-                throw new Error('Deidentification produced empty output for ' + relativePath);
+                rejected.push(core.rejection(file, 'deidentification', 'Deidentification produced no output.'));
+                continue;
             }
 
             var outputFile;
@@ -285,8 +297,9 @@
             }
         }
 
-        if (skippedCount > 0) {
-            statusLine.textContent = 'Skipped ' + skippedCount + ' unsupported or undeidentifiable file(s).';
+        if (skippedCount > 0 || rejected.length) {
+            statusLine.textContent = core.summarizeOutcome(resultFiles.length, skippedCount, rejected)
+                + ' Preparing upload...';
         }
 
         return resultFiles;
@@ -607,10 +620,31 @@
         var lastSyncedLine = payload.uploadState && payload.uploadState.syncedAt
             ? '<div><strong>Last synced:</strong> ' + escapeHtml(String(payload.uploadState.syncedAt)) + '</div>'
             : '';
+        // Files the batch left behind. They are shown rather than merely
+        // counted: a rejection the user cannot see is a silent data loss.
+        var rejectedFiles = Array.isArray(payload.rejectedFiles) ? payload.rejectedFiles : [];
+        var rejectedCount = Number(payload.rejectedCount);
+        if (!isFinite(rejectedCount) || rejectedCount < rejectedFiles.length) {
+            rejectedCount = rejectedFiles.length;
+        }
+        var rejectedLine = '';
+        if (rejectedCount > 0) {
+            var rejectedItems = rejectedFiles.map(function (entry) {
+                return '<li>' + escapeHtml(String(entry.name || 'unknown file'))
+                    + ' — ' + escapeHtml(String(entry.reason || 'Unknown error')) + '</li>';
+            }).join('');
+            var omitted = rejectedCount - rejectedFiles.length;
+            rejectedLine = '<div class="girder-file-rejected">'
+                + '<strong>Not uploaded (' + rejectedCount + '):</strong>'
+                + '<ul>' + rejectedItems + '</ul>'
+                + (omitted > 0 ? '<div>… and ' + omitted + ' more.</div>' : '')
+                + '</div>';
+        }
 
         target.innerHTML = ''
             + '<div class="' + cardClass + '">'
             + '<h5>' + escapeHtml(statusTitle) + '</h5>'
+            + rejectedLine
             + nameLine
             + '<div><strong>Files:</strong> ' + String(fileCount || 0) + '</div>'
             + '<div><strong>Size:</strong> ' + size + '</div>'
@@ -804,6 +838,9 @@
 
                 refreshed.metadata.uploadState = refreshed.metadata.uploadState || {};
                 refreshed.metadata.uploadState.syncedAt = new Date().toISOString();
+                // Girder knows nothing of the files we refused; without this the
+                // refresh would erase the record of what was left behind.
+                core.carryRejectionsForward(existingPayload, refreshed.metadata);
                 updateInfoState(refreshed.metadata);
                 setFieldValue(textarea, JSON.stringify(buildStoredMetadataPayload(currentMetadata)));
                 progressBar.style.width = '100%';
@@ -896,11 +933,14 @@
             var uploadData = null;
             var finalMetadata = null;
             var pendingPayload = null;
+            var rejected = [];
 
             try {
-                files = await deidentifyFilesIfNeeded(files, config, statusLine, deidentifyProgressBar);
+                files = await deidentifyFilesIfNeeded(files, config, statusLine, deidentifyProgressBar, rejected);
                 if (!files.length) {
-                    throw new Error('No eligible files after deidentification.');
+                    throw new Error(rejected.length
+                        ? ('No file could be deidentified. First reason: ' + rejected[0].reason)
+                        : 'No eligible files after deidentification.');
                 }
                 progressBar.style.width = '0%';
 
@@ -922,6 +962,7 @@
                 }
 
                 var uploadedFiles = [];
+                var lastSuccessfulGirder = null;
                 var totalFiles = files.length;
                 statusLine.textContent = 'Préparation des dossiers de réception...';
                 var batchResponse = await moduleAjax('init-batch', {
@@ -946,79 +987,98 @@
 
                 for (var fileIndex = 0; fileIndex < totalFiles; fileIndex += 1) {
                     var file = files[fileIndex];
-                    var currentFileLabel = getFileDisplayName(file) || file.name;
-                    var filePrefix = (fileIndex + 1) + '/' + totalFiles + ' ';
-                    var uploadPlan = batchUploads[fileIndex];
-                    if (!uploadPlan || !uploadPlan.folderId || !uploadPlan.storedFileName) {
-                        throw new Error('Missing upload plan for file #' + (fileIndex + 1));
-                    }
-                    var storedFileName = uploadPlan.storedFileName || currentFileLabel;
-
-                    statusLine.textContent = filePrefix + 'Préparation du fichier...';
-                    var uploadResponse = await moduleAjax('init-file-upload', {
-                        fieldName: fieldName,
-                        uploadPlan: uploadPlan
-                    });
-                    uploadData = uploadResponse.upload || {};
-                    if (!uploadData.uploadId) {
-                        throw new Error('Missing upload id for file #' + (fileIndex + 1));
-                    }
-                    storedFileName = uploadData.storedFileName || storedFileName;
-                    statusLine.textContent = filePrefix + 'Uploading file...';
-                    debug('Upload initialized', uploadData);
-
-                    pendingPayload.girder = {
-                        baseApiUrl: uploadData.girderUrl,
-                        baseUrl: uploadData.girderFrontchannelBaseUrl || null,
-                        rootCollectionId: uploadData.rootCollectionId,
-                        dagName: uploadData.dagName,
-                        recordId: uploadData.recordId,
-                        instanceId: uploadData.instanceId,
-                        parentFolderId: uploadData.parentFolderId || uploadData.folderId,
-                        parentFolderUrl: (uploadData.girderFrontchannelBaseUrl && (uploadData.parentFolderId || uploadData.folderId))
-                            ? (uploadData.girderFrontchannelBaseUrl + '/#folder/' + (uploadData.parentFolderId || uploadData.folderId))
-                            : null,
-                        folderId: uploadData.folderId,
-                        itemId: uploadData.itemId,
-                        uploadId: uploadData.uploadId,
-                        fileId: null
-                    };
-                    pendingPayload.uploadState.stage = 'uploading';
-                    pendingPayload.uploadState.updatedAt = new Date().toISOString();
-
-                    var fileEntity = await uploadFileViaBackend(config.settings, fieldName, uploadData, file, function (percent, chunkInfo) {
-                        var normalizedPercent = Math.round(((fileIndex + (percent / 100)) / totalFiles) * 100);
-                        progressBar.style.width = normalizedPercent + '%';
-                        if (chunkInfo && chunkInfo.totalChunks > 1) {
-                            statusLine.textContent = filePrefix
-                                + 'Uploading chunk '
-                                + chunkInfo.chunkIndex
-                                + '/'
-                                + chunkInfo.totalChunks
-                                + ' - '
-                                + formatSize(chunkInfo.uploadedBytes)
-                                + '/'
-                                + formatSize(chunkInfo.totalBytes);
-                        } else {
-                            statusLine.textContent = filePrefix + 'Uploading...';
+                    try {
+                        var currentFileLabel = getFileDisplayName(file) || file.name;
+                        var filePrefix = (fileIndex + 1) + '/' + totalFiles + ' ';
+                        var uploadPlan = batchUploads[fileIndex];
+                        if (!uploadPlan || !uploadPlan.folderId || !uploadPlan.storedFileName) {
+                            throw new Error('Missing upload plan for file #' + (fileIndex + 1));
                         }
-                    });
+                        var storedFileName = uploadPlan.storedFileName || currentFileLabel;
 
-                    uploadedFiles.push({
-                        name: storedFileName,
-                        size: file.size,
-                        mimeType: file.type || 'application/octet-stream',
-                        folderId: uploadData.folderId,
-                        itemId: uploadData.itemId,
-                        uploadId: uploadData.uploadId,
-                        fileId: fileEntity && fileEntity._id ? fileEntity._id : null
-                    });
+                        statusLine.textContent = filePrefix + 'Préparation du fichier...';
+                        var uploadResponse = await moduleAjax('init-file-upload', {
+                            fieldName: fieldName,
+                            uploadPlan: uploadPlan
+                        });
+                        uploadData = uploadResponse.upload || {};
+                        if (!uploadData.uploadId) {
+                            throw new Error('Missing upload id for file #' + (fileIndex + 1));
+                        }
+                        storedFileName = uploadData.storedFileName || storedFileName;
+                        statusLine.textContent = filePrefix + 'Uploading file...';
+                        debug('Upload initialized', uploadData);
 
-                    pendingPayload.uploadedFiles = uploadedFiles.slice();
-                    pendingPayload.girder.itemId = uploadData.itemId;
-                    pendingPayload.girder.uploadId = uploadData.uploadId;
-                    pendingPayload.girder.fileId = fileEntity && fileEntity._id ? fileEntity._id : null;
-                    pendingPayload.uploadState.updatedAt = new Date().toISOString();
+                        pendingPayload.girder = {
+                            baseApiUrl: uploadData.girderUrl,
+                            baseUrl: uploadData.girderFrontchannelBaseUrl || null,
+                            rootCollectionId: uploadData.rootCollectionId,
+                            dagName: uploadData.dagName,
+                            recordId: uploadData.recordId,
+                            instanceId: uploadData.instanceId,
+                            parentFolderId: uploadData.parentFolderId || uploadData.folderId,
+                            parentFolderUrl: (uploadData.girderFrontchannelBaseUrl && (uploadData.parentFolderId || uploadData.folderId))
+                                ? (uploadData.girderFrontchannelBaseUrl + '/#folder/' + (uploadData.parentFolderId || uploadData.folderId))
+                                : null,
+                            folderId: uploadData.folderId,
+                            itemId: uploadData.itemId,
+                            uploadId: uploadData.uploadId,
+                            fileId: null
+                        };
+                        pendingPayload.uploadState.stage = 'uploading';
+                        pendingPayload.uploadState.updatedAt = new Date().toISOString();
+
+                        var fileEntity = await uploadFileViaBackend(config.settings, fieldName, uploadData, file, function (percent, chunkInfo) {
+                            var normalizedPercent = Math.round(((fileIndex + (percent / 100)) / totalFiles) * 100);
+                            progressBar.style.width = normalizedPercent + '%';
+                            if (chunkInfo && chunkInfo.totalChunks > 1) {
+                                statusLine.textContent = filePrefix
+                                    + 'Uploading chunk '
+                                    + chunkInfo.chunkIndex
+                                    + '/'
+                                    + chunkInfo.totalChunks
+                                    + ' - '
+                                    + formatSize(chunkInfo.uploadedBytes)
+                                    + '/'
+                                    + formatSize(chunkInfo.totalBytes);
+                            } else {
+                                statusLine.textContent = filePrefix + 'Uploading...';
+                            }
+                        });
+
+                        uploadedFiles.push({
+                            name: storedFileName,
+                            size: file.size,
+                            mimeType: file.type || 'application/octet-stream',
+                            folderId: uploadData.folderId,
+                            itemId: uploadData.itemId,
+                            uploadId: uploadData.uploadId,
+                            fileId: fileEntity && fileEntity._id ? fileEntity._id : null
+                        });
+
+                        pendingPayload.uploadedFiles = uploadedFiles.slice();
+                        pendingPayload.girder.itemId = uploadData.itemId;
+                        pendingPayload.girder.uploadId = uploadData.uploadId;
+                        pendingPayload.girder.fileId = fileEntity && fileEntity._id ? fileEntity._id : null;
+                        pendingPayload.uploadState.updatedAt = new Date().toISOString();
+                        // Now that a file has landed, remember where: a later
+                        // failure must not leave the metadata pointing at it.
+                        lastSuccessfulGirder = Object.assign({}, pendingPayload.girder);
+                    } catch (fileError) {
+                        // One file failing to reach Girder does not cancel the
+                        // others; it is recorded and the batch carries on.
+                        rejected.push(core.rejection(file, 'upload', fileError));
+                        debug('File rejected during upload', {
+                            file: getFileDisplayName(file) || file.name,
+                            error: String(fileError)
+                        });
+                    }
+                }
+
+                if (!uploadedFiles.length) {
+                    throw new Error(rejected.length
+                        ? ('No file could be uploaded. First reason: ' + rejected[0].reason)
+                        : 'No file was uploaded.');
                 }
 
                 finalMetadata = {
@@ -1028,20 +1088,23 @@
                     totalSizeBytes: pendingPayload.uploadedFiles.reduce(function (sum, fileInfo) {
                         return sum + Number(fileInfo && fileInfo.size ? fileInfo.size : 0);
                     }, 0),
+                    rejectedFiles: rejected.slice(),
+                    rejectedCount: rejected.length,
                     uploadState: {
                         status: 'completed',
                         stage: 'done',
                         updatedAt: new Date().toISOString(),
                         error: null
                     },
-                    girder: pendingPayload.girder
+                    girder: lastSuccessfulGirder || pendingPayload.girder
                 };
                 finalMetadata.uploadSummary = buildUploadSummary(finalMetadata);
 
                 await persistMetadata(textarea, finalMetadata, true);
                 updateInfoState(finalMetadata);
                 progressBar.style.width = '100%';
-                statusLine.textContent = 'Upload complete. Saving form...';
+                statusLine.textContent = core.summarizeOutcome(uploadedFiles.length, 0, rejected)
+                    + ' Saving form...';
                 lockWidgetWithMessage('Upload complete. Saving form...');
 
                 debug('Upload completed', {

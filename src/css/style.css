@@ -159,3 +159,22 @@
     background: linear-gradient(90deg, #1f9d57 0%, #43c17b 100%);
     z-index: 1;
 }
+
+/* Files the batch could not take, listed under the upload summary. */
+.girder-file-rejected {
+    margin: 0 0 8px;
+    padding: 8px 10px;
+    border-left: 3px solid #d97706;
+    background: #fffbeb;
+    color: #7c2d12;
+    font-size: 12px;
+}
+
+.girder-file-rejected ul {
+    margin: 4px 0 0;
+    padding-left: 18px;
+}
+
+.girder-file-rejected li {
+    word-break: break-word;
+}

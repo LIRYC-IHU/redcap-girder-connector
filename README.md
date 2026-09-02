@@ -17,8 +17,8 @@ Supported formats:
 | Schiller Holter | file magic number | Patient block, voice annotations, device UUID |
 
 A file in none of these formats is dropped from the batch. An XML ECG in a
-dialect other than HL7 aECG is different: it is **refused**, and the upload
-stops — see below.
+dialect other than HL7 aECG is **refused** — see below. Either way the rest of
+the batch is uploaded, and what was left behind is reported.
 
 ## Repository layout
 
@@ -57,7 +57,7 @@ To deploy a working copy into a local REDCap, symlink `src/` into
 `redcap/modules/` under a versioned name:
 
 ```bash
-ln -s "$PWD/src" /path/to/redcap/modules/girder_uploader_v1.4.0
+ln -s "$PWD/src" /path/to/redcap/modules/girder_uploader_v1.4.1
 ```
 
 ## Tests
@@ -94,13 +94,13 @@ REDCap identifies a module version by its **directory name**, so a release is a
 zip containing a single `girder_uploader_v<VERSION>` folder.
 
 ```bash
-scripts/bump-version.sh 1.4.0
-git commit -am "Release v1.4.0"
-git tag v1.4.0 && git push --follow-tags
+scripts/bump-version.sh 1.4.1
+git commit -am "Release v1.4.1"
+git tag v1.4.1 && git push --follow-tags
 ```
 
 The tag triggers `.github/workflows/release.yml`, which re-runs the suites,
-builds the WASM, and publishes `girder_uploader_v1.4.0.zip` on the GitHub
+builds the WASM, and publishes `girder_uploader_v1.4.1.zip` on the GitHub
 release. That zip is what you feed to REDCap's *Upload module ZIP*.
 
 To build one locally:
@@ -131,7 +131,8 @@ the project settings:
 A format whose checkbox is off is still recognized but uploaded **untouched** —
 that is an explicit opt-out, not an oversight. One exception: an XML ECG in a
 dialect we cannot certify is refused whichever way `deidentify-xml-ecg` is set.
-Opting out covers the formats we can read, not one we cannot.
+Opting out covers the formats we can read, not one we cannot. The refusal
+concerns that file alone; the rest of the batch goes through.
 
 ## How an upload works
 
@@ -143,8 +144,12 @@ Opting out covers the formats we can read, not one we cannot.
    noise (`.DS_Store`, dotfiles, `~*`) and nested archives, and sorts the batch
    by path. Batches are capped at 9999 files.
 3. Every file goes through the WASM worker. Recognized formats are deidentified
-   (or passed through when disabled); unrecognized files are skipped, except an
-   XML ECG in an unsupported dialect, which stops the upload.
+   (or passed through when disabled); a file in none of them is skipped, and a
+   file the worker refuses — an XML ECG in an unsupported dialect, say — is set
+   aside. **Neither cancels the batch**: one stray `DICOMDIR` or viewer XML in a
+   DICOM archive must not lose a thousand-file upload. The same holds during the
+   transfer itself: a file that fails to reach Girder is recorded and the others
+   carry on.
 4. The server builds a signed upload plan per file — target folder, item, stored
    name — and the browser sends chunks back against that plan. The signature is
    an HMAC over the plan keyed by the Girder API key, so the browser cannot
@@ -152,8 +157,10 @@ Opting out covers the formats we can read, not one we cannot.
 5. Files land under `{DAG}/{record_id}/{field_name}` (with ` -{instance}`
    appended for repeating instances beyond the first).
 6. A JSON summary — file sample, counts, Girder folder link, upload state — is
-   written back into the tagged field. Failed uploads are recorded and can be
-   retried.
+   written back into the tagged field, **including the files that were left
+   behind and why**. They are listed in the widget and stored with the rest, so
+   a rejection is never silent: it survives a page reload and stays auditable.
+   The batch only fails outright when *nothing* could be uploaded.
 
 With `preserve-upload-folder-architecture` disabled, files are stored flat under
 neutral names (`0001.ext` … `9999.ext`), so the file names themselves cannot
@@ -273,8 +280,10 @@ Times of day are kept, and each date is written back in the notation it used
 a real calendar date in a plausible year, so identifiers and signal samples that
 happen to be eight digits are left alone.
 
-A file the worker cannot place is reported as `SKIP:` and dropped from the
-batch; a genuine failure aborts the upload instead.
+A file the worker cannot place is reported as `SKIP:` and dropped quietly, being
+a format we never claimed to handle. Any other error rejects that one file, with
+its reason recorded and shown. Only a failure that leaves nothing to upload —
+or a worker that will not start at all — ends the batch.
 
 ## Authors
 
