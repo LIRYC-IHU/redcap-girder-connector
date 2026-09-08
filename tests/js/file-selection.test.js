@@ -54,6 +54,15 @@ test('DICOM files are guessed from the extension or the MIME type', () => {
     assert.equal(core.isLikelyDicomFile(file('dicom-notes.txt')), false);
 });
 
+test('the deidentifier verdict beats the file name', () => {
+    // DICOM exporters also write `.vim` files and files with no extension;
+    // once the worker has read the bytes, that is what decides the layout.
+    assert.ok(core.isLikelyDicomFile(file('IMG0001.vim', { deidentifiedFormat: 'dicom' })));
+    assert.ok(core.isLikelyDicomFile(file('IMG0002', { deidentifiedFormat: 'dicom' })));
+    assert.equal(core.isLikelyDicomFile(file('IMG0001.vim')), false);
+    assert.equal(core.isLikelyDicomFile(file('ecg.xml', { deidentifiedFormat: 'xml' })), false);
+});
+
 test('a batch is filtered and sorted by path so series stay in order', () => {
     const batch = core.normalizeUploadFiles([
         file('0002.dcm', { girderRelativePath: 'study/0002.dcm' }),

@@ -116,6 +116,39 @@ fn falls_back_to_a_placeholder_when_the_record_has_no_id() {
 }
 
 #[test]
+fn a_header_less_dicom_is_routed_by_its_bytes_whatever_its_name() {
+    // `.vim`, no extension: the exporter's naming says nothing, the bytes do.
+    for (source, name) in [
+        (dicom_fixture_bare_explicit_vr(), "IMG0001.vim"),
+        (dicom_fixture_bare_implicit_vr(), "IMG0002"),
+        (dicom_fixture_without_magic_code(), "IMG0003.vim"),
+    ] {
+        let result = run(&source, name, "REC-42", ALL).unwrap();
+        assert_eq!(result.format_name, "dicom", "{name}");
+        assert_eq!(result.mime_type, "application/dicom", "{name}");
+    }
+}
+
+#[test]
+fn a_dicomdir_is_skipped_by_its_bytes_not_its_name() {
+    // The DICOMDIR itself is dropped, and so it is even when DICOM
+    // deidentification is off: passing it through would upload every patient
+    // name on the media.
+    for settings in [ALL, (false, true, true)] {
+        let error = run(&dicomdir_fixture(), "DICOMDIR", "REC-42", settings).unwrap_err();
+        assert!(error.starts_with("SKIP:"), "got {error}");
+        assert!(error.contains("DICOMDIR"), "got {error}");
+
+        let error = run(&dicomdir_fixture(), "index.dcm", "REC-42", settings).unwrap_err();
+        assert!(error.starts_with("SKIP:"), "got {error}");
+    }
+
+    // Conversely an image that happens to be called DICOMDIR is still an image.
+    let result = run(&dicom_fixture(), "DICOMDIR", "REC-42", ALL).unwrap();
+    assert_eq!(result.format_name, "dicom");
+}
+
+#[test]
 fn a_dicom_file_is_not_mistaken_for_an_xml_ecg() {
     let result = run(&dicom_fixture(), "weird-name.xml", "REC-42", ALL).unwrap();
     assert_eq!(result.format_name, "dicom");

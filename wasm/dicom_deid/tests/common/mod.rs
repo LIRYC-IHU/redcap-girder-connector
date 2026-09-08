@@ -50,6 +50,25 @@ pub fn dicom_fixture_without_birth_date() -> Vec<u8> {
 }
 
 fn dicom_fixture_with(study_date: &str, birth_date: Option<&str>) -> Vec<u8> {
+    let object = dicom_dataset_with(study_date, birth_date);
+
+    let meta_builder = FileMetaTableBuilder::new()
+        .media_storage_sop_class_uid(SECONDARY_CAPTURE_STORAGE)
+        .media_storage_sop_instance_uid(DICOM_SOP_UID)
+        .transfer_syntax(EXPLICIT_VR_LITTLE_ENDIAN)
+        .implementation_class_uid("1.2.826.0.1.3680043.10.543.1");
+
+    let file_object = object.with_meta(meta_builder).expect("object with meta");
+
+    let mut bytes = Vec::new();
+    file_object
+        .write_all(&mut bytes)
+        .expect("serialize fixture");
+    bytes
+}
+
+/// The data set alone, before any file header is attached.
+fn dicom_dataset_with(study_date: &str, birth_date: Option<&str>) -> InMemDicomObject {
     let mut object = InMemDicomObject::new_empty();
 
     object.put(DataElement::new(
@@ -130,18 +149,130 @@ fn dicom_fixture_with(study_date: &str, birth_date: Option<&str>) -> Vec<u8> {
         PrimitiveValue::from(SECONDARY_CAPTURE_STORAGE),
     ));
 
+    object
+}
+
+/// A DICOMDIR: a Part 10 file of the Media Storage Directory Storage class whose
+/// directory records name the patient in clear. Its name is deliberately not
+/// part of the fixture, since the widget must recognize it from the bytes.
+pub fn dicomdir_fixture() -> Vec<u8> {
+    const MEDIA_STORAGE_DIRECTORY_STORAGE: &str = "1.2.840.10008.1.3.10";
+
+    let mut patient_record = InMemDicomObject::new_empty();
+    patient_record.put(DataElement::new(
+        tags::DIRECTORY_RECORD_TYPE,
+        VR::CS,
+        PrimitiveValue::from("PATIENT"),
+    ));
+    patient_record.put(DataElement::new(
+        tags::PATIENT_NAME,
+        VR::PN,
+        PrimitiveValue::from(DICOM_PATIENT_NAME),
+    ));
+    patient_record.put(DataElement::new(
+        tags::PATIENT_ID,
+        VR::LO,
+        PrimitiveValue::from(DICOM_PATIENT_ID),
+    ));
+
+    let mut object = InMemDicomObject::new_empty();
+    object.put(DataElement::new(
+        tags::FILE_SET_ID,
+        VR::CS,
+        PrimitiveValue::from("STUDY_CD"),
+    ));
+    object.put(DataElement::new(
+        tags::DIRECTORY_RECORD_SEQUENCE,
+        VR::SQ,
+        dicom_core::value::DataSetSequence::from(vec![patient_record]),
+    ));
+
     let meta_builder = FileMetaTableBuilder::new()
-        .media_storage_sop_class_uid(SECONDARY_CAPTURE_STORAGE)
-        .media_storage_sop_instance_uid(DICOM_SOP_UID)
+        .media_storage_sop_class_uid(MEDIA_STORAGE_DIRECTORY_STORAGE)
+        .media_storage_sop_instance_uid("1.2.826.0.1.3680043.10.543.9.1")
         .transfer_syntax(EXPLICIT_VR_LITTLE_ENDIAN)
         .implementation_class_uid("1.2.826.0.1.3680043.10.543.1");
-
-    let file_object = object.with_meta(meta_builder).expect("object with meta");
+    let file_object = object.with_meta(meta_builder).expect("DICOMDIR with meta");
 
     let mut bytes = Vec::new();
     file_object
         .write_all(&mut bytes)
-        .expect("serialize fixture");
+        .expect("serialize DICOMDIR fixture");
+    bytes
+}
+
+/// A DICOMDIR whose file meta group claims an ordinary image class while the
+/// data set says otherwise. Exporters do get this wrong, and the file is still
+/// an index rather than data.
+pub fn dicomdir_fixture_with_misleading_meta() -> Vec<u8> {
+    const MEDIA_STORAGE_DIRECTORY_STORAGE: &str = "1.2.840.10008.1.3.10";
+
+    let mut object = InMemDicomObject::new_empty();
+    object.put(DataElement::new(
+        tags::SOP_CLASS_UID,
+        VR::UI,
+        PrimitiveValue::from(MEDIA_STORAGE_DIRECTORY_STORAGE),
+    ));
+    object.put(DataElement::new(
+        tags::FILE_SET_ID,
+        VR::CS,
+        PrimitiveValue::from("STUDY_CD"),
+    ));
+
+    let meta_builder = FileMetaTableBuilder::new()
+        .media_storage_sop_class_uid(SECONDARY_CAPTURE_STORAGE)
+        .media_storage_sop_instance_uid("1.2.826.0.1.3680043.10.543.9.2")
+        .transfer_syntax(EXPLICIT_VR_LITTLE_ENDIAN)
+        .implementation_class_uid("1.2.826.0.1.3680043.10.543.1");
+    // `with_meta` would copy the data set's SOP class over the meta one, which
+    // is exactly the inconsistency being reproduced, so the meta is kept as is.
+    let file_object = dicom_object::FileDicomObject::new_empty_with_meta(
+        meta_builder.build().expect("meta table"),
+    );
+    let mut file_object = file_object;
+    for elem in object.into_iter() {
+        file_object.put(elem);
+    }
+
+    let mut bytes = Vec::new();
+    file_object
+        .write_all(&mut bytes)
+        .expect("serialize DICOMDIR fixture");
+    bytes
+}
+
+/// The file meta group and data set with neither preamble nor `DICM` in front,
+/// as some exporters write them.
+pub fn dicom_fixture_without_magic_code() -> Vec<u8> {
+    let bytes = dicom_fixture();
+    assert_eq!(&bytes[128..132], b"DICM");
+    bytes[132..].to_vec()
+}
+
+/// The bare data set in explicit VR little endian: no preamble, no `DICM`, no
+/// file meta group. This is what lands in archives under `.vim` or with no
+/// extension at all.
+pub fn dicom_fixture_bare_explicit_vr() -> Vec<u8> {
+    let mut bytes = Vec::new();
+    dicom_dataset_with(DICOM_STUDY_DATE, Some(DICOM_BIRTH_DATE))
+        .write_dataset_with_ts(
+            &mut bytes,
+            &dicom_transfer_syntax_registry::entries::EXPLICIT_VR_LITTLE_ENDIAN.erased(),
+        )
+        .expect("serialize bare data set");
+    bytes
+}
+
+/// The bare data set in implicit VR little endian, the default transfer
+/// syntax and the one older modalities dump.
+pub fn dicom_fixture_bare_implicit_vr() -> Vec<u8> {
+    let mut bytes = Vec::new();
+    dicom_dataset_with(DICOM_STUDY_DATE, Some(DICOM_BIRTH_DATE))
+        .write_dataset_with_ts(
+            &mut bytes,
+            &dicom_transfer_syntax_registry::entries::IMPLICIT_VR_LITTLE_ENDIAN.erased(),
+        )
+        .expect("serialize bare data set");
     bytes
 }
 

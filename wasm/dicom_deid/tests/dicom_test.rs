@@ -23,10 +23,96 @@ fn accepts_a_stream_without_preamble() {
 }
 
 #[test]
+fn accepts_a_file_meta_group_without_the_magic_code() {
+    assert!(dicom::validate(&dicom_fixture_without_magic_code()).is_ok());
+}
+
+#[test]
+fn accepts_a_bare_data_set_in_explicit_vr() {
+    // Some exporters write the data set alone, with no Part 10 header at all,
+    // typically under a `.vim` extension or none. The bytes still say DICOM.
+    assert!(dicom::validate(&dicom_fixture_bare_explicit_vr()).is_ok());
+}
+
+#[test]
+fn accepts_a_bare_data_set_in_implicit_vr() {
+    assert!(dicom::validate(&dicom_fixture_bare_implicit_vr()).is_ok());
+}
+
+#[test]
+fn deidentifies_a_bare_data_set_into_a_part10_file() {
+    for (label, source) in [
+        ("explicit VR", dicom_fixture_bare_explicit_vr()),
+        ("implicit VR", dicom_fixture_bare_implicit_vr()),
+        ("meta without DICM", dicom_fixture_without_magic_code()),
+    ] {
+        let output = dicom::deidentify(&source, "REC-42", "MY PROJECT^REC-42")
+            .unwrap_or_else(|e| panic!("{label}: {e}"));
+
+        // The output gains the header the input lacked, so any viewer opens it.
+        assert_eq!(&output[128..132], b"DICM", "{label}");
+        assert!(dicom::validate(&output).is_ok(), "{label}");
+        assert_eq!(
+            read_dicom_string(&output, tags::PATIENT_ID).as_deref(),
+            Some("REC-42"),
+            "{label}"
+        );
+        assert_eq!(
+            read_dicom_string(&output, tags::MODALITY).as_deref(),
+            Some("XA"),
+            "{label}"
+        );
+        assert!(!contains(&output, DICOM_PATIENT_NAME), "{label}");
+        assert!(!contains(&output, DICOM_PATIENT_ID), "{label}");
+        assert!(!contains(&output, DICOM_INSTITUTION), "{label}");
+        assert!(!contains(&output, DICOM_PRIVATE_VALUE), "{label}");
+    }
+}
+
+#[test]
+fn tells_a_dicomdir_apart_from_a_data_object() {
+    assert_eq!(
+        dicom::validate(&dicom_fixture()),
+        Ok(dicom::DicomKind::Object)
+    );
+    assert_eq!(
+        dicom::validate(&dicomdir_fixture()),
+        Ok(dicom::DicomKind::Directory)
+    );
+}
+
+#[test]
+fn a_dicomdir_is_recognized_from_the_data_set_too() {
+    // Exporters sometimes leave the meta group announcing an image class; the
+    // data set is then the one telling the truth.
+    assert_eq!(
+        dicom::validate(&dicomdir_fixture_with_misleading_meta()),
+        Ok(dicom::DicomKind::Directory)
+    );
+}
+
+#[test]
+fn refuses_to_deidentify_a_dicomdir() {
+    // The index names every patient of the media and points at files and UIDs
+    // that the upload renames and rehashes: nothing useful survives, so it is
+    // skipped rather than uploaded.
+    let error = dicom::deidentify(&dicomdir_fixture(), "REC-42", "MY PROJECT^REC-42").unwrap_err();
+    assert!(error.starts_with("SKIP:"), "got {error}");
+    assert!(error.contains("DICOMDIR"), "got {error}");
+}
+
+#[test]
 fn rejects_non_dicom_input() {
     assert!(dicom::validate(b"").is_err());
     assert!(dicom::validate(b"not a dicom file at all").is_err());
     assert!(dicom::validate(&vec![0u8; 4096]).is_err());
+    // Looks like the start of a data set but is not one: (0008,0005) with an
+    // explicit VR, followed by garbage; then the implicit flavour with a value
+    // length pointing past the end of the file.
+    assert!(dicom::validate(b"\x08\x00\x05\x00CS\xff\xffgarbage garbage").is_err());
+    assert!(dicom::validate(b"\x08\x00\x05\x00\xff\xff\xff\x7fgarbage").is_err());
+    // A different first group is not sniffed at all.
+    assert!(dicom::validate(b"\x10\x00\x10\x00PN\x04\x00DOE^").is_err());
 }
 
 #[test]

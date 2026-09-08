@@ -291,6 +291,11 @@
                 outputFile.name = file.name;
             }
             outputFile.girderRelativePath = relativePath;
+            // The format the worker recognized from the bytes, so the upload
+            // layout does not depend on the file's name.
+            outputFile.deidentifiedFormat = workerResult && workerResult.format
+                ? String(workerResult.format)
+                : '';
             resultFiles.push(outputFile);
             if (deidentifyProgressBar) {
                 deidentifyProgressBar.style.width = Math.round(((i + 1) / files.length) * 100) + '%';

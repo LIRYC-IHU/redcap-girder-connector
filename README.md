@@ -12,7 +12,8 @@ Supported formats:
 
 | Format | Detection | What is removed |
 | --- | --- | --- |
-| DICOM | `DICM` magic code | Patient identity, institution, private tags; UIDs rehashed; dates shifted |
+| DICOM | `DICM` magic code, or a bare data set / file meta group without one | Patient identity, institution, private tags; UIDs rehashed; dates shifted |
+| DICOMDIR | Media Storage Directory SOP class | Not uploaded at all — see below |
 | XML ECG (HL7 aECG only) | root element + namespace | Everything outside an allowlist; UIDs replaced, dates shifted |
 | Schiller Holter | file magic number | Patient block, voice annotations, device UUID |
 
@@ -57,7 +58,7 @@ To deploy a working copy into a local REDCap, symlink `src/` into
 `redcap/modules/` under a versioned name:
 
 ```bash
-ln -s "$PWD/src" /path/to/redcap/modules/girder_uploader_v1.4.1
+ln -s "$PWD/src" /path/to/redcap/modules/girder_uploader_v1.5.0
 ```
 
 ## Tests
@@ -74,7 +75,7 @@ synthesized in code — no patient data lives in this repository.
 
 ### Checking against real recordings
 
-Drop real `.dcm` / `.xml` files into an untracked `test_data/` directory and
+Drop real `.dcm` / `.vim` / extension-less DICOM and `.xml` files into an untracked `test_data/` directory and
 `cargo test` picks them up (`tests/real_data_test.rs`); without it those tests
 skip, so CI and fresh clones are unaffected. The assertions are properties, not
 fixed values, so they hold for any recording:
@@ -94,13 +95,13 @@ REDCap identifies a module version by its **directory name**, so a release is a
 zip containing a single `girder_uploader_v<VERSION>` folder.
 
 ```bash
-scripts/bump-version.sh 1.4.1
-git commit -am "Release v1.4.1"
-git tag v1.4.1 && git push --follow-tags
+scripts/bump-version.sh 1.5.0
+git commit -am "Release v1.5.0"
+git tag v1.5.0 && git push --follow-tags
 ```
 
 The tag triggers `.github/workflows/release.yml`, which re-runs the suites,
-builds the WASM, and publishes `girder_uploader_v1.4.1.zip` on the GitHub
+builds the WASM, and publishes `girder_uploader_v1.5.0.zip` on the GitHub
 release. That zip is what you feed to REDCap's *Upload module ZIP*.
 
 To build one locally:
@@ -172,7 +173,15 @@ Everything runs client-side, in a Web Worker, through
 [`wasm/dicom_deid`](wasm/dicom_deid). Formats are probed in order — Schiller,
 XML ECG, DICOM — and the first that recognizes the file wins.
 
-**DICOM** uses [`dicom-anonymization`](https://crates.io/crates/dicom-anonymization)
+**DICOM** is recognized from the bytes, never from the name: exporters hand
+out DICOM as `.dcm`, `.vim` or with no extension at all. A Part 10 file is
+spotted by its `DICM` magic code, with or without the 128-byte preamble. Files
+that lack the Part 10 header — the file meta group without `DICM` in front, or
+a bare data set in explicit or implicit VR little endian — are recognized by
+their first element (group 0002 or 0008, self-consistent encoding), parsed, and
+given a minted file meta group, so the deidentified output is always a regular
+Part 10 file that any viewer opens. The anonymizer is
+[`dicom-anonymization`](https://crates.io/crates/dicom-anonymization)
 with a Liryc UID root (`1.2.826.0.1.3680043.10.543`). On top of its defaults the
 module writes:
 
@@ -182,6 +191,16 @@ module writes:
 
 UIDs are rehashed deterministically, so instances of one study stay grouped.
 Dates follow the shared policy below.
+
+A **DICOMDIR** is recognized by its SOP class (`1.2.840.10008.1.3.10`), never by
+its name, and is dropped from the batch — with DICOM deidentification on or off.
+It is the index of the original media, not data. It names every patient on the
+media in clear, and anonymizing it does not make it safe or useful: its
+directory records sit in a sequence, so the study date inside them is not
+shifted, while every file name and UID it points at is renamed or rehashed by
+the upload. On one real export, an anonymized DICOMDIR still carried the
+original study date and 340 dangling file references. An image that happens to
+be *named* `DICOMDIR` is still uploaded as an image.
 
 **XML ECG** accepts one dialect: the HL7 Annotated ECG the FDA takes, recognized
 by its root element and namespace (`<AnnotatedECG xmlns="urn:hl7-org:v3">`, a

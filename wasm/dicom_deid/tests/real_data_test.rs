@@ -5,7 +5,8 @@
 //! must not enter the repository. These tests therefore skip when it is absent
 //! (CI, a fresh clone) and run for anyone who has dropped files in it.
 //!
-//! Drop any `.dcm` / `.xml` in `test_data/` and it gets picked up. The
+//! Drop any `.dcm` / `.vim` / extension-less DICOM, or any `.xml`, in
+//! `test_data/` and it gets picked up. The
 //! assertions are property-based rather than value-based, so they hold for any
 //! recording: nothing the deidentifier itself considers identifying may survive
 //! into the output.
@@ -14,6 +15,7 @@ use std::path::{Path, PathBuf};
 
 use dicom_deid::xml::Policy;
 use dicom_deid::{dates, deidentify_bytes, dicom, xml};
+use dicom_encoding::transfer_syntax::TransferSyntaxIndex;
 use quick_xml::events::Event;
 use quick_xml::Reader;
 
@@ -30,6 +32,31 @@ fn test_data_dir() -> Option<PathBuf> {
 }
 
 fn files_with_extension(extension: &str) -> Vec<PathBuf> {
+    files_matching(|found| found.is_some_and(|e| e.eq_ignore_ascii_case(extension)))
+}
+
+/// DICOM data objects: `.dcm`, but also `.vim` or no extension at all. A
+/// DICOMDIR, told apart by its bytes, is not one of them.
+fn dicom_files() -> Vec<PathBuf> {
+    dicom_candidates()
+        .into_iter()
+        .filter(|path| !is_real_dicomdir(path))
+        .collect()
+}
+
+fn dicom_candidates() -> Vec<PathBuf> {
+    files_matching(|found| match found {
+        None => true,
+        Some(e) => e.eq_ignore_ascii_case("dcm") || e.eq_ignore_ascii_case("vim"),
+    })
+}
+
+fn is_real_dicomdir(path: &Path) -> bool {
+    let bytes = std::fs::read(path).expect("readable");
+    dicom::validate(&bytes) == Ok(dicom::DicomKind::Directory)
+}
+
+fn files_matching(accept: impl Fn(Option<&str>) -> bool) -> Vec<PathBuf> {
     let Some(dir) = test_data_dir() else {
         return Vec::new();
     };
@@ -38,11 +65,14 @@ fn files_with_extension(extension: &str) -> Vec<PathBuf> {
         .expect("test_data is readable")
         .flatten()
         .map(|entry| entry.path())
+        .filter(|path| path.is_file())
         .filter(|path| {
-            path.extension()
-                .and_then(|e| e.to_str())
-                .is_some_and(|e| e.eq_ignore_ascii_case(extension))
+            !path
+                .file_name()
+                .and_then(|n| n.to_str())
+                .is_some_and(|n| n.starts_with('.'))
         })
+        .filter(|path| accept(path.extension().and_then(|e| e.to_str())))
         .collect();
     files.sort();
     files
@@ -56,9 +86,9 @@ fn contains(haystack: &[u8], needle: &str) -> bool {
 
 #[test]
 fn real_dicom_files_are_deidentified() {
-    let files = files_with_extension("dcm");
+    let files = dicom_files();
     if files.is_empty() {
-        eprintln!("no .dcm in test_data/ — skipping");
+        eprintln!("no .dcm / .vim / extension-less file in test_data/ — skipping");
         return;
     }
 
@@ -68,7 +98,7 @@ fn real_dicom_files_are_deidentified() {
 
         assert!(
             dicom::validate(&source).is_ok(),
-            "{name}: not recognized as DICOM (a 128-byte preamble must be tolerated)"
+            "{name}: not recognized as DICOM (a preamble, a missing magic code and a bare data set must all be tolerated)"
         );
 
         let identifiers = dicom_identifiers(&source);
@@ -396,8 +426,14 @@ fn real_files_are_routed_to_the_right_deidentifier() {
         return;
     }
 
-    for (extension, expected) in [("dcm", "dicom"), ("xml", "xml")] {
-        for path in files_with_extension(extension) {
+    let candidates = dicom_files().into_iter().map(|path| (path, "dicom")).chain(
+        files_with_extension("xml")
+            .into_iter()
+            .map(|path| (path, "xml")),
+    );
+
+    for (path, expected) in candidates {
+        {
             let name = path.file_name().unwrap().to_string_lossy().to_string();
             let source = std::fs::read(&path).expect("readable");
 
@@ -408,6 +444,109 @@ fn real_files_are_routed_to_the_right_deidentifier() {
             assert_eq!(result.format_name, expected, "{name} was routed wrong");
             assert_ne!(result.bytes, source, "{name} came back untouched");
         }
+    }
+}
+
+#[test]
+fn a_real_dicomdir_is_skipped() {
+    let directories: Vec<PathBuf> = dicom_candidates()
+        .into_iter()
+        .filter(|path| is_real_dicomdir(path))
+        .collect();
+    if directories.is_empty() {
+        eprintln!("no DICOMDIR in test_data/ — skipping");
+        return;
+    }
+
+    for path in directories {
+        let name = path.file_name().unwrap().to_string_lossy().to_string();
+        let source = std::fs::read(&path).expect("readable");
+        let error = deidentify_bytes(&source, &name, RECORD_ID, PATIENT_NAME, true, true, true)
+            .expect_err("a DICOMDIR must not be uploaded");
+        assert!(error.starts_with("SKIP:"), "{name}: got {error}");
+        eprintln!("{name}: recognized as a DICOMDIR and skipped");
+    }
+}
+
+#[test]
+fn real_dicom_files_are_still_recognized_without_their_header() {
+    // Some exporters drop the Part 10 header and write the data set alone.
+    // Rebuild that layout from each real file whose transfer syntax allows it
+    // (a native little endian one; an encapsulated data set makes no sense
+    // without the header naming its codec) and check the bytes still say DICOM.
+    const NATIVE_LITTLE_ENDIAN: [&str; 2] = ["1.2.840.10008.1.2", "1.2.840.10008.1.2.1"];
+
+    let files = dicom_files();
+    if files.is_empty() {
+        eprintln!("no DICOM in test_data/ — skipping");
+        return;
+    }
+
+    for path in files {
+        let name = path.file_name().unwrap().to_string_lossy().to_string();
+        let source = std::fs::read(&path).expect("readable");
+        let stream = if source.starts_with(b"DICM") {
+            &source[..]
+        } else {
+            &source[128..]
+        };
+        let Ok(object) = dicom_object::from_reader(std::io::Cursor::new(stream)) else {
+            eprintln!("{name}: has no Part 10 header of its own — skipping");
+            continue;
+        };
+        let ts_uid = object
+            .meta()
+            .transfer_syntax()
+            .trim_end_matches('\0')
+            .to_string();
+        if !NATIVE_LITTLE_ENDIAN.contains(&ts_uid.as_str()) {
+            eprintln!("{name}: transfer syntax {ts_uid} is not native little endian — skipping");
+            continue;
+        }
+        let ts = dicom_transfer_syntax_registry::TransferSyntaxRegistry
+            .get(&ts_uid)
+            .expect("registered transfer syntax");
+
+        let mut bare = Vec::new();
+        object
+            .write_dataset_with_ts(&mut bare, ts)
+            .expect("re-serialize the data set");
+        assert!(
+            !bare.starts_with(b"DICM") && &bare[..2] == b"\x08\x00",
+            "{name}: the rebuilt bare data set should start at group 0008"
+        );
+
+        assert!(
+            dicom::validate(&bare).is_ok(),
+            "{name}: not recognized as DICOM once the header is stripped"
+        );
+        let output = deidentify_bytes(
+            &bare,
+            "IMG0001.vim",
+            RECORD_ID,
+            PATIENT_NAME,
+            true,
+            true,
+            true,
+        )
+        .unwrap_or_else(|e| panic!("{name} (bare): {e}"));
+        assert_eq!(
+            output.format_name, "dicom",
+            "{name} (bare) was routed wrong"
+        );
+        assert!(
+            dicom::validate(&output.bytes).is_ok(),
+            "{name} (bare): the deidentified file no longer parses"
+        );
+        for (tag, value) in dicom_identifiers(&source) {
+            if value.len() >= MIN_SEARCHABLE_LENGTH {
+                assert!(
+                    !contains(&output.bytes, &value),
+                    "{name} (bare): {tag} ({value:?}) survived deidentification"
+                );
+            }
+        }
+        eprintln!("{name}: still recognized and deidentified without its header");
     }
 }
 

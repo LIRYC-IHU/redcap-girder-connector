@@ -1,5 +1,32 @@
 # Changelog
 
+## 1.5.0
+
+### Fixed
+
+- **DICOM files are recognized from their bytes, whatever their name.** Some
+  exporters write DICOM under a `.vim` extension or with no extension, and
+  without the Part 10 header: either the file meta group with no `DICM` in
+  front, or the bare data set alone (explicit or implicit VR little endian).
+  Those files were dropped as unsupported. The deidentifier now sniffs the
+  first element of such files, parses them, and mints the missing file meta
+  group, so the deidentified output is a regular Part 10 file. The widget then
+  lays them out as DICOM in Girder based on the deidentifier's verdict rather
+  than the file name.
+
+### Changed — deidentification
+
+- **A DICOMDIR is no longer uploaded.** It is recognized by its SOP class
+  rather than its name, and skipped whether or not DICOM deidentification is
+  enabled. It indexes the original media rather than holding data: it names
+  every patient on the media in clear, and anonymizing it leaves a stale index
+  — its directory records sit in a sequence, so the study date inside them is
+  not shifted, while the file names and UIDs it points at are renamed and
+  rehashed by the upload. On one real export the anonymized DICOMDIR still
+  carried the original study date and 340 dangling file references. As with any
+  skipped file, the rest of the batch goes through. An image merely *named*
+  `DICOMDIR` is still uploaded.
+
 ## 1.4.1
 
 ### Fixed

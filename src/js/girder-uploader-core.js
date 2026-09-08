@@ -134,12 +134,20 @@
     }
 
     /**
-     * Best-effort DICOM guess used to pick the Girder item layout. The real
-     * decision is made by the WASM deidentifier, which reads the file header.
+     * Is this file DICOM, for the purpose of picking the Girder item layout?
+     *
+     * The deidentifier's verdict wins when there is one: it reads the bytes,
+     * and DICOM arrives under `.dcm`, `.vim` or no extension at all, so the
+     * name proves nothing. The MIME type and the extension are the fallback
+     * for files that have not been through the worker.
      */
     function isLikelyDicomFile(file) {
         if (!file) {
             return false;
+        }
+
+        if (String(file.deidentifiedFormat || '').toLowerCase() === 'dicom') {
+            return true;
         }
 
         var mimeType = String(file.type || '').toLowerCase();

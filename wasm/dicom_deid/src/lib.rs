@@ -68,7 +68,8 @@ pub fn deidentify(
 /// caller (REDCap) has explicitly opted out of deidentifying that format.
 ///
 /// Unrecognized inputs yield a `SKIP:`-prefixed error, which the browser side
-/// treats as "drop this file from the upload" rather than as a failure.
+/// treats as "drop this file from the upload" rather than as a failure. So
+/// does a DICOMDIR, recognized by its SOP class rather than its name.
 pub fn deidentify_bytes(
     input_bytes: &[u8],
     file_name: &str,
@@ -124,7 +125,15 @@ pub fn deidentify_bytes(
         xml::XmlOutcome::NotXml => {}
     }
 
-    if dicom::validate(input_bytes).is_ok() {
+    if let Ok(kind) = dicom::validate(input_bytes) {
+        // A DICOMDIR is skipped whether or not DICOM deidentification is
+        // enabled: it is the index of the original media, it names every
+        // patient on it in clear, and anonymizing it leaves a stale index
+        // whose study date is not even shifted. See `dicom::DicomKind`.
+        if kind == dicom::DicomKind::Directory {
+            return Err(dicom::DICOMDIR_SKIP_REASON.to_string());
+        }
+
         let bytes = if enable_dicom {
             dicom::deidentify(input_bytes, &normalized_record_id, &normalized_patient_name)?
         } else {
