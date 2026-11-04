@@ -15,6 +15,7 @@ dicom-transfer-syntax-registry = "0.8"
 quick-xml = "0.32"
 uuid = { version = "1.17", features = ["js", "v4"] }
 getrandom = { version = "0.3", features = ["wasm_js"] }
+liryc-pseudonym = { path = "../../crates/liryc-pseudonym", features = ["wasm"] }
 
 [dev-dependencies]
 dicom-dictionary-std = "0.8"

@@ -1,0 +1,23 @@
+[package]
+name = "liryc-pseudonym"
+version = "0.1.0"
+edition = "2021"
+description = "Verifiable OPRF (RFC 9497, ristretto255-SHA512) behind the NIP fingerprint and the DICOM UID key."
+license = "MIT OR Apache-2.0"
+publish = false
+
+[dependencies]
+curve25519-dalek = "4.1"
+sha2 = "0.10"
+hmac = "0.12"
+getrandom = "0.3"
+
+[features]
+# Randomness through the browser's crypto.getRandomValues.
+wasm = ["getrandom/wasm_js"]
+
+[dev-dependencies]
+# Reference RFC 9497 implementation, to cross-check ours.
+voprf = "0.5"
+rand = "0.8"
+serde_json = "1"

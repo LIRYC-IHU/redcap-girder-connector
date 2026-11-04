@@ -206,7 +206,8 @@
 
                     try {
                         var message = Object.assign({ id: id }, payload);
-                        worker.postMessage(message, [payload.bytes]);
+                        var transfer = payload.bytes instanceof ArrayBuffer ? [payload.bytes] : [];
+                        worker.postMessage(message, transfer);
                     } catch (error) {
                         pending.delete(id);
                         reject(error);
@@ -239,14 +240,17 @@
      * rejections are returned so the caller can show and store them — dropping
      * a file quietly is exactly what we are trying to avoid.
      */
-    async function deidentifyFilesIfNeeded(files, config, statusLine, deidentifyProgressBar, rejected) {
+    async function deidentifyFilesIfNeeded(entries, config, statusLine, deidentifyProgressBar, rejected, keys, skippedBefore) {
         var bridge = getDeidentifyBridge(config);
         if (!bridge) {
             throw new Error('Deidentification worker is unavailable.');
         }
 
+        var files = entries.map(function (entry) {
+            return entry.file;
+        });
         var resultFiles = [];
-        var skippedCount = 0;
+        var skippedCount = Number(skippedBefore || 0);
         if (deidentifyProgressBar) {
             deidentifyProgressBar.style.width = '0%';
         }
@@ -261,7 +265,7 @@
             var inputArrayBuffer = await file.arrayBuffer();
             var workerResult;
             try {
-                workerResult = await bridge.run(core.buildDeidentifyRequest(file, config, inputArrayBuffer));
+                workerResult = await bridge.run(core.buildDeidentifyRequest(file, config, inputArrayBuffer, keys));
             } catch (error) {
                 if (core.isSkipError(error)) {
                     skippedCount += 1;
@@ -296,6 +300,8 @@
             outputFile.deidentifiedFormat = workerResult && workerResult.format
                 ? String(workerResult.format)
                 : '';
+            // Sent as it is when its format's deidentification is off.
+            outputFile.deidentified = !!(entries[i].inspection && entries[i].inspection.deidentified);
             resultFiles.push(outputFile);
             if (deidentifyProgressBar) {
                 deidentifyProgressBar.style.width = Math.round(((i + 1) / files.length) * 100) + '%';
@@ -308,6 +314,233 @@
         }
 
         return resultFiles;
+    }
+
+    function textElement(tag, className, text) {
+        var element = document.createElement(tag);
+        if (className) {
+            element.className = className;
+        }
+        element.textContent = text;
+        return element;
+    }
+
+    /**
+     * The body of the review window. What comes from the files — names, series
+     * descriptions — is untrusted, so it only ever goes in as text.
+     */
+    function renderTransferReview(review) {
+        var root = document.createElement('div');
+        root.className = 'girder-review';
+
+        if (review.check) {
+            var alert = document.createElement('div');
+            alert.className = 'girder-review-check girder-review-check-' + review.check.level;
+            alert.setAttribute('role', review.mismatch ? 'alert' : 'status');
+            alert.appendChild(textElement('strong', '', review.check.title));
+            alert.appendChild(textElement('div', '', review.check.text));
+            root.appendChild(alert);
+        }
+
+        root.appendChild(textElement('p', 'girder-review-record', 'Record ' + review.recordId));
+
+        if (review.patient) {
+            root.appendChild(textElement('h6', '', 'Patient'));
+            var patient = document.createElement('dl');
+            patient.className = 'girder-review-patient';
+            review.patient.forEach(function (row) {
+                patient.appendChild(textElement('dt', '', row.label));
+                patient.appendChild(textElement('dd', '', row.value));
+            });
+            root.appendChild(patient);
+        }
+
+        root.appendChild(textElement('h6', '', 'Content'));
+        var table = document.createElement('table');
+        table.className = 'girder-review-content';
+        var head = table.createTHead().insertRow();
+        ['Type', 'Details', 'Files'].forEach(function (label) {
+            head.appendChild(textElement('th', '', label));
+        });
+        var body = table.createTBody();
+        review.content.forEach(function (entry) {
+            var row = body.insertRow();
+            row.insertCell().textContent = entry.type;
+            row.insertCell().textContent = entry.detail;
+            row.insertCell().textContent = String(entry.files);
+        });
+        root.appendChild(table);
+
+        review.notes.forEach(function (note) {
+            root.appendChild(textElement('p', 'girder-review-note', note));
+        });
+        return root;
+    }
+
+    /**
+     * Ask the uploader to review the transfer, in the window REDCap's Online
+     * Designer uses to edit a field. Resolves to whether they confirmed.
+     */
+    function showTransferReview(review) {
+        return new Promise(function (resolve) {
+            var confirmed = false;
+            window.jQuery(renderTransferReview(review)).dialog({
+                // REDCap renders dialog titles as HTML: nothing from a file here.
+                title: 'Review this transfer',
+                classes: { 'ui-dialog': 'girder-transfer-review' },
+                modal: true,
+                resizable: false,
+                width: Math.min(640, window.innerWidth - 32),
+                open: function () {
+                    if (typeof window.fitDialog === 'function') {
+                        window.fitDialog(this);
+                    }
+                },
+                // The patient's identity leaves the page with the window.
+                close: function () {
+                    window.jQuery(this).dialog('destroy').remove();
+                    resolve(confirmed);
+                },
+                buttons: [
+                    {
+                        text: 'Cancel',
+                        click: function () {
+                            window.jQuery(this).dialog('close');
+                        }
+                    },
+                    {
+                        text: review.confirmLabel,
+                        'class': review.mismatch ? 'girder-review-confirm girder-review-confirm-danger' : 'girder-review-confirm',
+                        click: function () {
+                            confirmed = true;
+                            window.jQuery(this).dialog('close');
+                        }
+                    }
+                ]
+            });
+        });
+    }
+
+    /**
+     * Before any file is deidentified: read who the files belong to and what
+     * they are, compute the patient's pseudonym with REDCap, check it against
+     * the record's earlier uploads, have the uploader review the transfer, and
+     * only then store the fingerprint. See docs/design/pseudonymisation.md.
+     *
+     * Returns the files to deidentify, each with its inspection, the patient's
+     * date offset and the ticket `init-batch` asks for, or null when the
+     * uploader cancels. Throws when the batch must not go ahead; a file without
+     * NIP is set aside like any rejection.
+     */
+    async function preparePseudonym(files, config, fieldName, statusLine, rejected) {
+        var bridge = getDeidentifyBridge(config);
+        var entries = [];
+        var skipped = 0;
+
+        for (var i = 0; i < files.length; i += 1) {
+            var file = files[i];
+            statusLine.textContent = 'Reading ' + (i + 1) + '/' + files.length + ': '
+                + (getFileDisplayName(file) || file.name);
+            try {
+                var inspection = await bridge.run(core.buildInspectRequest(file, config, await file.arrayBuffer()));
+                entries.push({ file: file, inspection: inspection });
+            } catch (error) {
+                if (core.isSkipError(error)) {
+                    skipped += 1;
+                } else {
+                    rejected.push(core.rejection(file, 'deidentification', error));
+                }
+            }
+        }
+
+        var groups = core.groupByPatient(entries);
+        groups.missingNip.forEach(function (entry) {
+            rejected.push(core.rejection(entry.file, 'deidentification', core.MISSING_NIP_REASON));
+        });
+        if (groups.patients.length > 1) {
+            throw new Error(core.buildMultiplePatientsError(groups.patients));
+        }
+        var patient = groups.patients[0] || null;
+        var eligible = (patient ? patient.entries : []).concat(groups.passthrough);
+        if (!eligible.length) {
+            return { entries: [], keys: null, ticket: '', skipped: skipped };
+        }
+
+        // 1. The patient's pseudonym, and 2. the fingerprint check, which stores
+        // nothing: the uploader decides knowing what it found.
+        var pseudonym = null;
+        var checkStatus = '';
+        var existingUploads = 0;
+        if (patient) {
+            statusLine.textContent = 'Computing the patient pseudonym...';
+            var pseudonymConfig = config.pseudonym || {};
+            var session = await bridge.run({
+                type: 'pseudonym-start',
+                domain: String(pseudonymConfig.domain || ''),
+                nip: patient.nip
+            });
+            var evaluation = await moduleAjax('pseudonym-evaluate', {
+                fieldName: fieldName,
+                blindedElement: session.blindedElement
+            });
+            pseudonym = await bridge.run({
+                type: 'pseudonym-finish',
+                sessionId: session.sessionId,
+                recordId: config.recordId,
+                evaluatedElement: evaluation.evaluatedElement,
+                proof: evaluation.proof,
+                publicKey: evaluation.publicKey
+            });
+
+            statusLine.textContent = 'Checking the patient against the record...';
+            var check = await moduleAjax('pseudonym-check', {
+                fieldName: fieldName,
+                fingerprint: pseudonym.fingerprint
+            });
+            checkStatus = check.status;
+            existingUploads = check.existingUploads;
+        }
+
+        // 3. The uploader decides, seeing the patient, the content and the check.
+        var confirmed = await showTransferReview(core.buildTransferReview({
+            recordId: config.recordId,
+            patient: patient,
+            summary: core.summarizeTransfer(eligible),
+            passthroughCount: groups.passthrough.length,
+            setAsideCount: rejected.length + skipped,
+            checkStatus: checkStatus,
+            existingUploads: existingUploads
+        }));
+        if (!confirmed) {
+            return null;
+        }
+
+        // 4. Only now is the fingerprint stored, if it is the record's first.
+        var ticket = '';
+        var patientAlert = null;
+        if (patient) {
+            var registration = await moduleAjax('pseudonym-register', {
+                fieldName: fieldName,
+                fingerprint: pseudonym.fingerprint,
+                confirmedMismatch: checkStatus === 'mismatch'
+            });
+            ticket = registration.ticket || '';
+            if (registration.status === 'overridden') {
+                patientAlert = { type: 'fingerprint-mismatch', confirmedAt: new Date().toISOString() };
+            }
+        }
+
+        // In the order the files were picked.
+        var kept = new Set(eligible);
+        return {
+            entries: entries.filter(function (entry) {
+                return kept.has(entry);
+            }),
+            keys: pseudonym ? { dateOffsetDays: pseudonym.dateOffsetDays, uidKey: pseudonym.uidKey } : null,
+            ticket: ticket,
+            patientAlert: patientAlert,
+            skipped: skipped
+        };
     }
 
     async function readFileEntry(entry) {
@@ -646,9 +879,16 @@
                 + '</div>';
         }
 
+        var patientAlertLine = payload.patientAlert
+            ? '<div class="girder-file-alert"><strong>Patient signature mismatch:</strong> '
+                + 'sent although it differs from the earlier uploads of this record. Confirmed by the uploader on '
+                + escapeHtml(String(payload.patientAlert.confirmedAt || 'an unknown date')) + '.</div>'
+            : '';
+
         target.innerHTML = ''
             + '<div class="' + cardClass + '">'
             + '<h5>' + escapeHtml(statusTitle) + '</h5>'
+            + patientAlertLine
             + rejectedLine
             + nameLine
             + '<div><strong>Files:</strong> ' + String(fileCount || 0) + '</div>'
@@ -846,6 +1086,7 @@
                 // Girder knows nothing of the files we refused; without this the
                 // refresh would erase the record of what was left behind.
                 core.carryRejectionsForward(existingPayload, refreshed.metadata);
+                core.carryPatientAlertForward(existingPayload, refreshed.metadata);
                 updateInfoState(refreshed.metadata);
                 setFieldValue(textarea, JSON.stringify(buildStoredMetadataPayload(currentMetadata)));
                 progressBar.style.width = '100%';
@@ -939,9 +1180,25 @@
             var finalMetadata = null;
             var pendingPayload = null;
             var rejected = [];
+            var cancelled = false;
 
             try {
-                files = await deidentifyFilesIfNeeded(files, config, statusLine, deidentifyProgressBar, rejected);
+                var prepared = await preparePseudonym(files, config, fieldName, statusLine, rejected);
+                if (!prepared) {
+                    // Nothing happened: the field and the form stay as they were.
+                    cancelled = true;
+                    statusLine.textContent = 'Upload cancelled. Nothing was sent.';
+                    return;
+                }
+                files = await deidentifyFilesIfNeeded(
+                    prepared.entries,
+                    config,
+                    statusLine,
+                    deidentifyProgressBar,
+                    rejected,
+                    prepared.keys,
+                    prepared.skipped
+                );
                 if (!files.length) {
                     throw new Error(rejected.length
                         ? ('No file could be deidentified. First reason: ' + rejected[0].reason)
@@ -972,6 +1229,7 @@
                 statusLine.textContent = 'Préparation des dossiers de réception...';
                 var batchResponse = await moduleAjax('init-batch', {
                     fieldName: fieldName,
+                    pseudonymTicket: prepared.ticket,
                     files: files.map(function (file) {
                         var relativePath = getFileDisplayName(file) || file.name;
                         return {
@@ -980,7 +1238,8 @@
                             fileSize: file.size,
                             mimeType: file.type || 'application/octet-stream',
                             isDicom: (file.type || '').toLowerCase() === 'application/dicom'
-                                || isLikelyDicomFile(file)
+                                || isLikelyDicomFile(file),
+                            deidentified: !!file.deidentified
                         };
                     })
                 });
@@ -1095,6 +1354,7 @@
                     }, 0),
                     rejectedFiles: rejected.slice(),
                     rejectedCount: rejected.length,
+                    patientAlert: prepared.patientAlert,
                     uploadState: {
                         status: 'completed',
                         stage: 'done',
@@ -1160,10 +1420,12 @@
                 });
             } finally {
                 setUploadingState(false);
-                try {
-                    saveFormInForeground();
-                } catch (saveError) {
-                    debug('Foreground save failed', { error: saveError.message });
+                if (!cancelled) {
+                    try {
+                        saveFormInForeground();
+                    } catch (saveError) {
+                        debug('Foreground save failed', { error: saveError.message });
+                    }
                 }
             }
         }

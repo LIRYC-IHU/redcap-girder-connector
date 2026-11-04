@@ -2,57 +2,34 @@
 
 use dicom_deid::dates;
 
-fn shift(value: &str, birth: &str) -> String {
-    let offset = dates::offset_from_birth_date(birth).expect("birth date parses");
-    dates::shift(value, offset).expect("value is a date")
+fn days(date: &str) -> i64 {
+    dates::parse(date).expect("a date").days.0
 }
 
 #[test]
-fn a_birth_date_lands_on_the_epoch() {
-    for birth in ["19540212", "19700101", "20240229", "1954-02-12"] {
-        assert_eq!(
-            shift(birth, birth).replace('-', ""),
-            "19700101",
-            "{birth} did not land on the epoch"
-        );
+fn a_date_moves_by_exactly_the_offset() {
+    for offset in [-18_262, -27_000, -36_524] {
+        let shifted = dates::shift("20240115", offset).unwrap();
+        assert_eq!(days(&shifted) - days("20240115"), offset, "{shifted}");
     }
 }
 
 #[test]
 fn the_interval_between_two_dates_is_preserved() {
-    let birth = "19540212";
-    let offset = dates::offset_from_birth_date(birth).unwrap();
-
     // 2024 is a leap year, so this crosses a 29 February.
-    let first = dates::shift("20240115", offset).unwrap();
-    let second = dates::shift("20240315", offset).unwrap();
+    let first = dates::shift("20240115", -20_000).unwrap();
+    let second = dates::shift("20240315", -20_000).unwrap();
 
-    assert_eq!(
-        dates::parse(&second).unwrap().days.0 - dates::parse(&first).unwrap().days.0,
-        60
-    );
+    assert_eq!(days(&second) - days(&first), 60);
 }
 
 #[test]
 fn the_time_of_day_and_notation_survive() {
-    assert_eq!(shift("20240115093000", "19700101"), "20240115093000");
-    assert_eq!(shift("2024-01-15", "19700101"), "2024-01-15");
+    assert_eq!(dates::shift("20240115093000", 0).unwrap(), "20240115093000");
+    assert_eq!(dates::shift("2024-01-15", 0).unwrap(), "2024-01-15");
     assert_eq!(
-        shift("20240115093000.500", "19700101"),
-        "20240115093000.500"
-    );
-}
-
-#[test]
-fn a_patient_born_on_the_epoch_is_not_shifted() {
-    assert_eq!(dates::offset_from_birth_date("19700101"), Some(0));
-}
-
-#[test]
-fn two_patients_get_different_offsets() {
-    assert_ne!(
-        dates::offset_from_birth_date("19400301"),
-        dates::offset_from_birth_date("19800301")
+        dates::shift("20240115093000.500", 1).unwrap(),
+        "20240116093000.500"
     );
 }
 
@@ -90,15 +67,41 @@ fn real_calendar_dates_are_recognized() {
 #[test]
 fn leap_days_round_trip() {
     // 2024-02-29 shifted by a whole number of days must stay a real date.
-    let offset = dates::offset_from_birth_date("19540212").unwrap();
-    let shifted = dates::shift("20240229", offset).unwrap();
+    let shifted = dates::shift("20240229", -20_000).unwrap();
 
     assert!(dates::parse(&shifted).is_some(), "{shifted} is not a date");
     assert_eq!(shifted.len(), 8);
 }
 
+// --- Age ---------------------------------------------------------------------
+
 #[test]
-fn a_missing_birth_date_yields_no_offset() {
-    assert_eq!(dates::offset_from_birth_date(""), None);
-    assert_eq!(dates::offset_from_birth_date("UNKNOWN"), None);
+fn a_birthday_not_yet_reached_does_not_count() {
+    let before = dates::age("19540212", "20240115").unwrap();
+    let after = dates::age("19540212", "20240212").unwrap();
+
+    assert_eq!(before.years, 69);
+    assert_eq!(after.years, 70);
+}
+
+#[test]
+fn months_and_days_are_counted_in_total() {
+    let age = dates::age("20231001", "20240115").unwrap();
+
+    assert_eq!(age.years, 0);
+    assert_eq!(age.months, 3);
+    assert_eq!(age.days, 106);
+}
+
+#[test]
+fn a_birth_on_29_february_ages_on_1_march() {
+    assert_eq!(dates::age("20000229", "20230228").unwrap().years, 22);
+    assert_eq!(dates::age("20000229", "20230301").unwrap().years, 23);
+}
+
+#[test]
+fn there_is_no_age_before_birth_or_without_dates() {
+    assert_eq!(dates::age("20240115", "20230101"), None);
+    assert_eq!(dates::age("UNKNOWN", "20240115"), None);
+    assert_eq!(dates::age("19540212", ""), None);
 }

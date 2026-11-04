@@ -178,3 +178,113 @@
 .girder-file-rejected li {
     word-break: break-word;
 }
+
+/* A confirmed patient signature mismatch, kept on the field. */
+.girder-file-alert {
+    margin-bottom: 8px;
+    padding: 8px 10px;
+    border: 1px solid #c9302c;
+    border-radius: 4px;
+    background: #fdecea;
+    color: #8a1f1b;
+}
+
+/* The transfer review, in REDCap's own jQuery UI dialog. */
+.girder-transfer-review .ui-dialog-content {
+    background-color: #f5f5f5;
+}
+
+.girder-review h6 {
+    margin: 14px 0 6px;
+    font-weight: bold;
+}
+
+.girder-review-record {
+    margin: 0;
+    font-weight: bold;
+}
+
+.girder-review-patient {
+    display: grid;
+    grid-template-columns: max-content 1fr;
+    gap: 2px 16px;
+    margin: 0;
+}
+
+.girder-review-patient dt {
+    font-weight: normal;
+    color: #555;
+}
+
+.girder-review-patient dd {
+    margin: 0;
+    font-weight: bold;
+    overflow-wrap: anywhere;
+}
+
+.girder-review-content {
+    width: 100%;
+    border-collapse: collapse;
+    background: #fff;
+}
+
+.girder-review-content th,
+.girder-review-content td {
+    padding: 4px 8px;
+    border: 1px solid #ddd;
+    text-align: left;
+    overflow-wrap: anywhere;
+}
+
+.girder-review-content th:last-child,
+.girder-review-content td:last-child {
+    width: 1%;
+    text-align: right;
+    white-space: nowrap;
+}
+
+.girder-review-note {
+    margin: 8px 0 0;
+    color: #555;
+}
+
+.girder-review-check {
+    margin-bottom: 12px;
+    padding: 8px 10px;
+    border: 1px solid;
+    border-radius: 4px;
+}
+
+.girder-review-check-ok {
+    border-color: #4c9a5b;
+    background: #e8f5ea;
+    color: #1f5c2e;
+}
+
+.girder-review-check-info {
+    border-color: #6c9bd2;
+    background: #e9f1fa;
+    color: #1f4a7a;
+}
+
+.girder-review-check-warning {
+    border-color: #d9a441;
+    background: #fdf5e3;
+    color: #6f4e0a;
+}
+
+.girder-review-check-danger {
+    border-color: #c9302c;
+    background: #fdecea;
+    color: #8a1f1b;
+}
+
+/* As the Save button of the Online Designer's dialog. */
+.girder-transfer-review .ui-dialog-buttonpane .girder-review-confirm {
+    font-weight: bold;
+    color: #333;
+}
+
+.girder-transfer-review .ui-dialog-buttonpane .girder-review-confirm-danger {
+    color: #a3211d;
+}

@@ -1,0 +1,19 @@
+{
+  "blind": "6cb7511ce409fc2ab05c4c4a974596f432333333333333333333333333333303",
+  "blindedElement": "86e2e2f6a95f19444cdb7d7cbf1467e21f35a49aa21a7b1765377f3aa5c82915",
+  "dateOffsetDays": -33321,
+  "description": "The VOPRF of protocol/README.md end to end, produced by crates/liryc-pseudonym (pseudonym_test.rs). Given its key, the blinded element and the proof scalar, the server must return exactly the evaluated element and proof.",
+  "domain": "redcap:12",
+  "evaluatedElement": "dc1fae7b6914cce8c886293a6e4362f8ed681f04b5304c6aa76494181dc2f916",
+  "fingerprint": "c9",
+  "input": "6c697279632d70736575646f6e796d2d7631007265646361703a31320031323334353637",
+  "key": "243d1bb4f6adfeb83a74196e321732fc10111111111111111111111111111101",
+  "nip": " 0001234567 ",
+  "normalizedNip": "1234567",
+  "output": "426de3499ac5e151776622a1f832cfa19a4f65248ef679dae90ad77f5b3093a675a6e66169b28e264ed86143ad12be8384cb04b8bcc02d7880c4b6ee139bef37",
+  "proof": "eab509467adc710861867fc17845f1bacdc4db9746cf92d7cee2b52ca9856a0d099c90e2f22d51f60c25f763e792ca14a5ca138d70bddaf2b8960e5974aa9a05",
+  "proofRandomScalar": "90f46cd0dab7fae3ead065b8c95cc8f043444444444444444444444444444404",
+  "publicKey": "108e8d1590f8a01b7c61940faa56371db6742b5de8c9a3e29b1e9f3eafac6e79",
+  "recordId": "REC-1",
+  "uidKey": "efd51fa0d6ad7fa2232b55ae601d42e662fd569646bed8a0e8b08270c7733b24"
+}

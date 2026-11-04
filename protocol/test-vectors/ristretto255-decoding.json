@@ -1,0 +1,3756 @@
+{
+ "description": "Reference ristretto255 decoding and k*B results computed by libsodium 1.0.18 (php:8.2-cli, sodium_crypto_core_ristretto255_is_valid_point and sodium_crypto_scalarmult_ristretto255). \"libsodiumValid\" is the raw libsodium answer; \"valid\" is what RFC 9496 requires: libsodium 1.0.18 accepts the identity and encodings with bit 255 set (it masks that bit), both of which must be rejected.",
+ "key": "e6f73f344b79b379f1a0dd37e07ff62e38d9f71345ce62ae3a9bc60b04ccd909",
+ "cases": [
+  {
+   "element": "0000000000000000000000000000000000000000000000000000000000000000",
+   "libsodiumValid": true,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "0100000000000000000000000000000000000000000000000000000000000000",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "0200000000000000000000000000000000000000000000000000000000000000",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "ecffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff7f",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "edffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff7f",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "eeffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff7f",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "efffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff7f",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff7f",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "feffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff7f",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "e2f2ae0a6abc4e71a884a961c500515f58e30b6aa582dd8db6a65945e08d2d76",
+   "libsodiumValid": true,
+   "valid": true,
+   "kTimesElement": "c803e2cc6b05fc15064549b5920659ca4a77b2cca6f04f6b357009335476ad4e"
+  },
+  {
+   "element": "6a493210f7499cd17fecb510ae0cea23a110e8d5b901f8acadd3095c73a3b919",
+   "libsodiumValid": true,
+   "valid": true,
+   "kTimesElement": "dc52ac0f7ad1aef13b7dcd1fac2b8fd81796ad2f8add51cecaf1b225f8afdd18"
+  },
+  {
+   "element": "94741f5d5d52755ece4f23f044ee27d5d1ea1e2bd196b462166b16152a9d0259",
+   "libsodiumValid": true,
+   "valid": true,
+   "kTimesElement": "a4bd0f526f5ae10e8ecb4e4dde854a4ab4ef993f2bd4138f480f79e925cd6965"
+  },
+  {
+   "element": "da80862773358b466ffadfe0b3293ab3d9fd53c5ea6c955358f568322daf6a57",
+   "libsodiumValid": true,
+   "valid": true,
+   "kTimesElement": "764751f4a7d0a43b616df552d6c4a6a701fb819d32b6ad2ff6b7435a1f85787b"
+  },
+  {
+   "element": "e882b131016b52c1d3337080187cf768423efccbb517bb495ab812c4160ff44e",
+   "libsodiumValid": true,
+   "valid": true,
+   "kTimesElement": "042b890cdde74752d9c02760c465c6a2b9461c862bd3144712367c7376a82949"
+  },
+  {
+   "element": "f64746d3c92b13050ed8d80236a7f0007c3b3f962f5ba793d19a601ebb1df403",
+   "libsodiumValid": true,
+   "valid": true,
+   "kTimesElement": "e64bb2e947104bba46a8deb5a78c131c921d84bb318af92c5b15fb78d6fd7d0f"
+  },
+  {
+   "element": "44f53520926ec81fbd5a387845beb7df85a96a24ece18738bdcfa6a7822a176d",
+   "libsodiumValid": true,
+   "valid": true,
+   "kTimesElement": "3c4bfbb60da34313d002428ae6824133bf9e82279c457abfff7afb403ab8b25d"
+  },
+  {
+   "element": "903293d8f2287ebe10e2374dc1a53e0bc887e592699f02d077d5263cdd55601c",
+   "libsodiumValid": true,
+   "valid": true,
+   "kTimesElement": "0ce78f1b3e8b04c85e80d2e1cb7b9d83e9b21ac8fb318b633bd44d859d45634d"
+  },
+  {
+   "element": "02622ace8f7303a31cafc63f8fc48fdc16e1c8c8d234b2f0d6685282a9076031",
+   "libsodiumValid": true,
+   "valid": true,
+   "kTimesElement": "e0a1a73a22d4f95c22b6afb6a2514a4e84bd0c4eb48bf0a12ec4c1b75b6aad46"
+  },
+  {
+   "element": "20706fd788b2720a1ed2a5dad4952b01f413bcf0e7564de8cdc816689e2db95f",
+   "libsodiumValid": true,
+   "valid": true,
+   "kTimesElement": "8459a55c465ed96588664b44b0a74c6caba5655269335583b5d2702cf6f50d3e"
+  },
+  {
+   "element": "bce83f8ba5dd2fa572864c24ba1810f9522bc6004afe95877ac73241cafdab42",
+   "libsodiumValid": true,
+   "valid": true,
+   "kTimesElement": "5071c63f680b66026d4604b15f2f2a176f5ddd71a345ed0a7737dd9199b4820f"
+  },
+  {
+   "element": "e4549ee16b9aa03099ca208c67adafcafa4c3f3e4e5303de6026e3ca8ff84460",
+   "libsodiumValid": true,
+   "valid": true,
+   "kTimesElement": "62a232fdb030065224202a361fe96293dd1b6ebfe80818bf10a1c3337d639d0c"
+  },
+  {
+   "element": "aa52e000df2e16f55fb1032fc33bc42742dad6bd5a8fc0be0167436c5948501f",
+   "libsodiumValid": true,
+   "valid": true,
+   "kTimesElement": "c066749d095acdc952c2569cd1510a0de01c4b9c1f5c34735b2ac07d84aa0724"
+  },
+  {
+   "element": "46376b80f409b29dc2b5f6f0c52591990896e5716f41477cd30085ab7f10301e",
+   "libsodiumValid": true,
+   "valid": true,
+   "kTimesElement": "8a25cab4f0f7a3ad6ddcd7d8eab1ef0de53d83c3d12952d5bcb59f188788755f"
+  },
+  {
+   "element": "e0c418f7c8d9c4cdd7395b93ea124f3ad99021bb681dfc3302a9d99a2e53e64e",
+   "libsodiumValid": true,
+   "valid": true,
+   "kTimesElement": "a8379bbe0203ac7671678eb1d814deb6e3ed6aef518570aec45c25de705eae4f"
+  },
+  {
+   "element": "7b287006520303d00388ed8204f89cd96b35f4a80ddf23b5fa78db0a587d6d27",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "e55d2022915ec724306b45bfaf2f01b824696db5f7a0a9f871f590b526bb66e0",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "8393a516bc9facb872b4fe5fa77f25673e0bc7b367e6531c21cf819334bb2e40",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "f39daf97a1ac613a3a265a4c92aee36c2e1316ce4a857451b351f96192dc1fb0",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "04527993018056b808538314ba1e5fcb5202180ade93c6ed82e10b1fa26ef789",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "831882beac23ee6a12a8f1a9dc43903ea7b655c3420e3f783652e5ab3cb20134",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "bc9f908b859d34c405b986a461874d78dcfe04ddfec656a49044738e53e6e63f",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "c8a1b3a85d2fd94a2305f12207a43e2fba2551b333eb8b5544000d76c916893c",
+   "libsodiumValid": true,
+   "valid": true,
+   "kTimesElement": "1299389ae1d5acd1e4e5f52b10e1e1e58d51881dbdfb9f0ee6933af3fa8f2c6d"
+  },
+  {
+   "element": "fe623c7cff34381b21a8f457ab4609d7cc3d4d7e1cd6fb47f576dde6644d9b7b",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "038cbd5544a6860620bcee126a87a9fa0142fdb69279097ceb825a5f3fc3e01a",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "ceaa53a6598db682800675a6014e83208c83f62e1dc1f8fcf58ccaec81e23a73",
+   "libsodiumValid": true,
+   "valid": true,
+   "kTimesElement": "20812b776c742e9e43ae4d2e4bfc362f94e53a8f2d7ee5347194a3dba07cae13"
+  },
+  {
+   "element": "79c6d37d2100f5c92ec5e2a298bfdb146f77274a2a2f25464df0e44a3b8de0f5",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "b102790fce5a958bcd9d82722c1497705b4ff1e5aaa35dfac96d60fb4b918e28",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "83c34e5bab3dbbaf0e483b5004f2914178e8539aefac6953dcf14db94dbe0b4f",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "0354bdcc981ded4fb5f3dd1e68fbd9e698fa7ca873bb3ff79f26002e67cb9b2a",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "07efad3fe355efff1a54127858fe95cde5193a560a5bf80a4a0fbcc7cf9e7625",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "e37776041ebdcde3c908b2db82394db59a1e62d002e3181ed2f1894fd27a2d95",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "eba37b268f3ea9dd777559ad909832a9c6fd85af65cd3420c90f86a9c632093d",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "987704a69a2e62145d0a5213f16fe05f8dccb2644a0d249e9d12933e5575b226",
+   "libsodiumValid": true,
+   "valid": true,
+   "kTimesElement": "1a3223144cd50ebd7b749a122149e7b99e8e6c07247910d1a9d3c016bec5804c"
+  },
+  {
+   "element": "e0626c7f33dd5bd4c64fe5a73df133bb811f3d509a1e58c40f50dcc3c1a728a2",
+   "libsodiumValid": true,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "b0bdde5cfd446b4bcb54ba7661ae5f2d7c7058abffd48a6e2f2cf1568e9e5da4",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "a65bcd4c7d6d5e5eca62fae841f59d5bc77fa22f558da9cd1066af933fe55617",
+   "libsodiumValid": true,
+   "valid": true,
+   "kTimesElement": "7ed658172cdd62cacb61f784d05ecfa6f86a687551a74237ad6257e55663c214"
+  },
+  {
+   "element": "ff0d8717445d21195670eb9fa33eb4a32f28e7d4c69dd8a2b12b9f59122b271d",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "403d4d21f6fe1c740ce9910bad2291c2bc52fd8f50f3c558be642241fd45e504",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "4b7aa2ff90c537ecdb539427ab78e4e68ec663fa3fa6951fe64b2f25a837a616",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "e88739743ecd54ccbbb6553bc7ea37670f7e66689654437f260aaca813ce6a67",
+   "libsodiumValid": true,
+   "valid": true,
+   "kTimesElement": "c63a1b80872011224be6491a8cd5822a23d5633fbb87c71ba7b9860ccc662d38"
+  },
+  {
+   "element": "e6ed9fb403458178caeead7b8832f335614fad10ccd81c8df5397eea5d29f654",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "de11f6dffcce0e85f87a4a2afb2b9c83673c8224b23c1700c96dcd1591589285",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "2fe68adaa1b98943d02fdd864ae0b2456dfcd1bda5d8e095b94865f709783241",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "c6e5bb601f9331f615facb6119d4b53f666f40371f5c7f3abd3b149b6ee74a38",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "61690b5b9bc5e87c4af5b345ebb738d224a093cbd0bcaabd5d2d28cdde541960",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "d224016044ead19b5e4bdd5158a5e264b8f787359b3992eea0c07dda6f601e1b",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "b2fa2768ecc0ccd26d933c166c45e1bc2001320429252d16f0ec4f72a4479389",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "7a164656c19f9d830a64abbe4659f32b41a5c3cecaa0f162dc6e145f4a82bc47",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "c48bfdf634720e0de736c382cf5eb1d7ff5ee3341dc548aac462d48dd640f612",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "20afbf86c5b880c09c2cdf7c3244d46867eea24fe643c636ed110068de4e2b2f",
+   "libsodiumValid": true,
+   "valid": true,
+   "kTimesElement": "e0c52825d68ac2b7d3e83d888970bca65d0afbde696c6c358f386f756f5b1424"
+  },
+  {
+   "element": "f40bc4bcf8de728355d3bfb40f587e0168510a2211dc7059a0c154807c9bd496",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "708823612bdd85798ae87cb090a938d87d047c6820a3ffe70493a0e85582f69d",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "bdd3ff0764b981fc4c2e59fcf0896d349cb81eda28ee6bc389f2879d1c482519",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "d0144ec2d159fa6778631fb5315308173cd3f40e11fe19f5eaf95704824bb34b",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "95e3ac478f06bdc2f106f1c1a955ebfdf3c25b48988bbeada73d7816f11cb0ea",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "473d2e43394f51060ab4f1efdf1322759a4683302c97a5fcf1ef291ddc58ce12",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "48d48e3ba5f13d602b2d0b5c65e71b5387b59a2afb54a729501c7e0a66c17927",
+   "libsodiumValid": true,
+   "valid": true,
+   "kTimesElement": "dcd94b5a81a08461338c521b9fb0270f8b6ea448784f96350240368c9044f077"
+  },
+  {
+   "element": "4d8d71b51972f6ef050543f4cbc13d811f73007268bc05490f78d2007449f130",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "f77b901ffb548c0ef679f0824a3c628393bb07f16b78e2cf0b96f8077941bc34",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "96651542e78eddfed43c691b1d2b36db71b5d681814934fb8b8d2d58de1f9a24",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "f4e625f93653ef3761e981c4976c7919172288e7719188985045a7e63eb4226d",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "b29d954a13fe7c651e8a142bb5fefa2d0b30aa811c7ad5f065f573a067e3627f",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "88d25e21ce858401dcc4e22c389b41854f1521e4af97f3f34708d691d9af0f67",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "d5ba5eea38c9f912ffa33d9b3f739d25521efb38e7863c10a12ab9836f218453",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "1ca6da24310006700b0b6c23d25812f4a987e217602177eb2dc156f7fcbddc73",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "0cb71987cd8a9ed99f17b0ea80e060cadcc663039c052081acca4236eb6e7553",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "6018ff824b5da6530feeb601600f66d0286110384e98572ad8a9db71f32a8c50",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "e6f2368cb7f704155de0dd866a82aac5fbdd6c697352549ac6c9fcb45a098e31",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "75f876644a3a277e0f3a491274e46b744e2b89d803e3ae2aa39a0e244730e2d8",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "d087ae23e03bc0710e5e440dbfe0bda9f38cca197e34ef2c5050c21325e00658",
+   "libsodiumValid": true,
+   "valid": true,
+   "kTimesElement": "3a1328d03d7f3e3f0981bf1d4978f9c60b4ffed95253f6a8fc60f88b35aaf834"
+  },
+  {
+   "element": "2db6b1efbc2dc65df109c73058bb435f0a5b4db980c787f73296d05137230024",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "9c6bfc969014152714c37aeee3e0231287831c598506b674d3422e5b25cf293f",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "a24e2d72c6a66e959d52ec80673e78212d3568276ed989b8ff0387f5541d1850",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "f775f28c9e186859ded8db6d5762aa7ece18ed41c1396391a7ff81b49aa2652a",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "2668bd6c14301d65b1c37ebeaa9145cb18fa4590b3f44217d3c86aec3fed7f6f",
+   "libsodiumValid": true,
+   "valid": true,
+   "kTimesElement": "982a35cca407016b6938d92d5b9747978d25f307524dbb760f670cca25322948"
+  },
+  {
+   "element": "58e3eae163f189206f631394ade7954f8a9f03e7a27969ee9c92db9dbef2c230",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "68cba221004a07ea04957064f3673ecc7874606003fc3ced99746516e5d5e046",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "36265c64bb84bc64a9bf68ca8b95d5051737194183db56bf9cecc448b8e8c252",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "62516fded2ae36ae1e0ba24b73d30e385f720658d37b20325a96d8fc2563e877",
+   "libsodiumValid": true,
+   "valid": true,
+   "kTimesElement": "06a46e06e971c909ecea37daddc5ec3e9f6077bb90b94fe56b3f9fc19df4944a"
+  },
+  {
+   "element": "2c7f0029751d86c54dabd519968623d221974b197e11a3dc568a1dbeb5e6bc51",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "e823ec11f6793122c746e96099604307cbf529c9fe6ccba5f56f52e89f8c3a78",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "e4d6213b70d6bd2d9e917c59c60a475a4d5221c76bb6403ffee7963a754e382f",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "92110fced2471bd55f67e432caeb19e5fd7f6cb7375727e48d0edd095c6e6c05",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "b60f8479cc760b3178e7d1a8b432515c94575f0d542fadf480a3d28c0b7647e9",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "46a3eec5dac6520763fceda01cc48e9616d73407779c6ffe9b32182458d6eb6c",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "ced87f505883bfd2ce908ea95584665f589e7bef72867d1ab5301448689acc6b",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "c81fc0a530c8d31e9a23dd4f8fa191f74e73227f2cd6d17ec1e4af440c96b351",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "28514a324db2e38b5b51f5f08de6c1263ea002c7c045f62ce76f35932ecc0b2f",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "d9d6494f8ca1441833792b6f1ac9cbf7543d9ff11dfb8238a01befbf5de0322d",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "8ec88028e036bd9f0e89efb50d339afb29896e3c22f7a68f97aa8ec738e106e9",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "1422ecb085f9f864e51f2b6f6f7822d61b9876892f989d3bb5b9c024f057ef31",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "b2c23f24d04af2e5e734a52e1122f659a6d0d94082b249bc74958c3db274b56c",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "f453254d278537cb47d32391e29b5159d62b0c69680d53abcfcfcd6a29a3b055",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "8d165658d3aa33c9d326fe125d1930126bfc7fc46b0317edcbbcc2fe26e2a535",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "887ed4adb84143eb423f27f644ece9e8dda92c7ca67091e4a4b7120b2bd70068",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "e6d5c41f5da290f0a19f6912fc0cad88bae519819402d2843474b66062224915",
+   "libsodiumValid": true,
+   "valid": true,
+   "kTimesElement": "28571e73c226e4c73d8b5ed6a87fa8619f0afa791c989964cf2ce386a7230d7f"
+  },
+  {
+   "element": "c77aa58413aa36521f0da7b505902f6c82195515869924b13902f9ef38d9243e",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "080a7101f529b8a6af54e2e7a0fd4185547692a1494151761f5e4092c06a9e02",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "64a287418a093e9384571606f3ac2f954cb8792b79dfe13150141ee8670c1325",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "8923a2b518289dee7837128fba1753a1569d37db04dcf33c51593efbb8168b58",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "2c49a31d20abbda66c2ad15d838b7dce7d8594a62fa674e3a705d2fdcc5b211d",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "f48c76e26ba789abf8536750d38336ce6c107c53d4d619b727f7a49e1645ef3a",
+   "libsodiumValid": true,
+   "valid": true,
+   "kTimesElement": "5651e123a2d72c66296555e5f0c19b529fe2befc97516d11f223c0bae9683d56"
+  },
+  {
+   "element": "628b3a462c853de64a1f7215d8a059a0e41c9fda419519ca226df44574538274",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "961e36a2e3d1431dba2b37314598a5e9db48f26e205b240c1214cf75b9fc3063",
+   "libsodiumValid": true,
+   "valid": true,
+   "kTimesElement": "944feef01bfb2031502067a9be58a5bf200625c827ae0f7f92c5cf4eb39fea4a"
+  },
+  {
+   "element": "1e52c8ca95031006cd1ad1657030127deeab95cc08fce5d9bdf8e6ab1ac3800c",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "5649079b62bd9f13631f0faba7cc9d3964994a0f0e50fe2af5007461c12b1754",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "f0925b15505b901b3d062c46f98bb4476fecda5d8b9e94d98782cc004ca1ee3f",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "3c45bc2d93d396dcfacf04b29abcca4eb2949a1d15612881df1d16ff52ec3b70",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "fd82a2ba4ceca9a85a00500656b29ce550aa3e752b56494a50ae394cd0413810",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "eeab47e4a6b1dc1f4ff20cd29aeea454e8d26d2d80a129c18d1251bb27a4afc5",
+   "libsodiumValid": true,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "9e2cd14b0f1053e7bf19e7d6d1385a9fabcf9309e457eaa7ef9d718f051d4c52",
+   "libsodiumValid": true,
+   "valid": true,
+   "kTimesElement": "b4ceed2854d999f90c010155050e2009dc3fe9935867b39fe1617a63f6af2709"
+  },
+  {
+   "element": "568a7d101accdaab93728917291fc17786dbc15ae0c0ff488a3374224f638f4a",
+   "libsodiumValid": true,
+   "valid": true,
+   "kTimesElement": "6055f95bd9ce321716df26bad68df3b66fa1d22f28ebd7eace92d91a54af5040"
+  },
+  {
+   "element": "38b3466c4d3c4203074f17f9c0ba9318a9ad45f1faff5009309e8993ac863e51",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "9e2646c11a73286ace064712f4074b05fdfe1502a481ce003dcf54294d355931",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "94e674fe039df9b9eb043abdb02433e844a59d627039aebe2acbff5b9d20c210",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "5ab3d7ba2a4b981a918a8c13aaeb8cab6d6321deab1caec01dab2a5c7cdec16a",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "df4219cadc98864376f0fbcf4491ec9603379e6ae8bdf9ac37f13dc3fcd81d64",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "c48a5fb1f626656d15eed0dda273df6f499dfad400520e3ada964c16f38784a1",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "684bf242c2334951988c49cd35349fdca479aefd8c3ebf42fe23889e468ed347",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "c17e51692952514977d5def1ff9196a0a629993a354d5908d1342283c2d34b0a",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "d5458f7b5c5130eb9f9ccf2ce2072d8c52f88c5f0781033b98e362645288f240",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "70f5c468e4c962eae19c894bd644d77f669bea8d1feae204502e648c90e18517",
+   "libsodiumValid": true,
+   "valid": true,
+   "kTimesElement": "3e3a44c6ddf8002300245cd3714287bd5f29db95639549a6fd505c96c6672e76"
+  },
+  {
+   "element": "7cb6914b5c8f7fb0b2bf7a6ffe444ad318c35913bc416bab335f16ff883dd880",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "de99c0ed152ee5357e8966f5c481e3d3d8cdd64f39731db8c14f98374690b8ed",
+   "libsodiumValid": true,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "66cd642e69e0943ba76bd148bf3795a3c5412449b76f44d3b5312db2c92ab95a",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "84e1a340cca3b76e83def633666573037e007fe2e23e3a22c124d9f7e0842073",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "d40cc2b3eb415784667c8ca9a2551c55802f1d964ca09ab8775b5c0e09cb67d5",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "3d98b96ba930d95dd0a65d3ec92f560218c12e5ca977d301eb80a215758ed864",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "200fff72bf8bed19799388ca16e629600ce957dbca17c13236966ac8f67c1d01",
+   "libsodiumValid": true,
+   "valid": true,
+   "kTimesElement": "76e07735d58aa52ee6560049482c1009a9aabfb75dcec241a9eef18da33c5e18"
+  },
+  {
+   "element": "dba09d97086d31663d8b47c07aab961fc407e97be418d7e4187d47bb620d2d6d",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "cc29b0fc8b7b5895f8b569119e0f6a3d72033f4c81cfc74faab2d38de12a1024",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "12940cde12757fe7630b551f409726c79e880fcf1e3d39a4e0f53613f7916a0a",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "3001d35aae0ab02ff3dd2e704d0e091f113520ca15177dc55a3c508777d37c75",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "06d7b84ca6616e330874e391ced727ac41ad8e948017acc1b23be5665c3ca44e",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "3439bfda3da9e1ff7dea587828e30a4c589d1e7c5228b30cd1f10a577070546f",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "10c965eb24734036f5feda6e32215b1c5edb3c33b6550814e3d429e7fa10315f",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "bef621a1d825eab100801df94688c9fa3868ed204a42f1a9d9c7ec7fb0bd4145",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "fa091cdece17ded4fcbcea4b320bc1d69b993124ea60fd85fc1275912fca1872",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "b4dbfeb22203e791a5a3a851c62e528b8907dd4f6e64af6257950c2cd3fae577",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "1e934cca82cbb827726e3ac57176a4ed8dc582d573f3c0285759996ff12eea17",
+   "libsodiumValid": true,
+   "valid": true,
+   "kTimesElement": "381e8aa72f4ecd31d07fd23f6c1c72e511999ce7c30f13486f8175e5d4f22618"
+  },
+  {
+   "element": "b6737cfc90ca838188c0f437212ccd3664fbb4c550f935c7ae9cc080573c2406",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "dd99e0cbbfa63d6578988e5363032a739af2d24eec27ceab78d00af19020450c",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "1a0a7cb9f5fda035279293d91427dea2509433a04ff5c5235ea25d98affdc914",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "a455e473522c04adc1523f95cc2e3dd67e12d07a10998ca401c09d8fe2fe4c74",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "9d3df642ac15e3408aa8a40a22dc0fb8484917a6fd5272fc6aa444be2a48d4de",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "ab4f238b55cb8ba62bc8e147785370de062f4e5e934831dbf24c26f5e2cb9068",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "42c36b6377fd6478d91b949fc87366eb9bf1f88a50980631367a1a3fd2894209",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "1dc7946582353ba770ec594f3788e4b4465fddb8e5035af67904f772413e7637",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "20bc561c0aefaa7b41ac8c52743a5df0a73ed59c1159223d9cecaa98fc7056da",
+   "libsodiumValid": true,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "4a40eacf781a5da49e5b464dcabf8f0e8edf10eb5d579067d6dd283faada6f62",
+   "libsodiumValid": true,
+   "valid": true,
+   "kTimesElement": "5470948217d6e64dd2e963bb9db63bac9d9b27ed6fdede3878d351e30ce9f27d"
+  },
+  {
+   "element": "06e8d47546739a0b8816113227291db619ad4b31f277c971fb3a8f3710cc5c77",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "9d3f885a3f76101bb4a04305f90a868b45357ccb006442053e4573fa10580b56",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "3c4ce24e4c0830dbe9aabdcd29b30007a470572e2499f2bc6dafd013b0815725",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "35fe41567baaafa1186d2cd315c9b71a5f4956b1c774f5e974a21084e3c40d9f",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "908b13a0f188ff6354bc049d04a338babf183cdd42ae23c85f2842dc19345514",
+   "libsodiumValid": true,
+   "valid": true,
+   "kTimesElement": "30d95afc7b34e4c9f08e59313bc3006ad2f2e4f95f7eb27969877d3eaf0da768"
+  },
+  {
+   "element": "53254da4a93208b52be332d18010b4e111c3335484535e96ce5ed1f6a9aa2200",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "2c46f28e2d8c5fc7bae520f29a5c00d64b9fcdd1c4847e26b21e40e4e5b0de6c",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "240dc95bcd57ec44022bc0ccd1cc93d5c0005d4af4a90603621a4ed62b999e34",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "4e595fcc344a16f358d1071bac1b004bc42b8bee43645893f7fb814c1f85fbb3",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "5ef6da5be6b0cdd21fbd5c58997ec3c506c200a2b71c04c86ddee1bc6d765222",
+   "libsodiumValid": true,
+   "valid": true,
+   "kTimesElement": "0e9fab4d7277972a4dc8173735177968f14eb86ac5035f3fbd07b8833a3a6a3f"
+  },
+  {
+   "element": "86f6a9713dd8b93b65b439479f9779c9fd8b6d75e56eda86cb277c36550fc12a",
+   "libsodiumValid": true,
+   "valid": true,
+   "kTimesElement": "24fbd72199652a73b65dc46867759c6d05c12af43e71544bfd38a0401283af08"
+  },
+  {
+   "element": "c042cc81877f93277c122a4fd8f3ce4f42cf2fee1b7dc9dd876a707e0cd2f45a",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "2291e44fb478c2cf15c0c2ae963421d9db72f536c851e0adb6698c7ebf296d17",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "7504a17e7d0d7998144d52e810f12790b7fef0f2e19d75eda312789a9bed2526",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "2c49bf248f8bf344d052e678b76b27c32ae47d01a3016b5afc47240dfc321546",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "c4edb3f52e68247b82e80f4509c4494e52a825c1c9c9f7c97bf9d4149caacfd8",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "e231eb54c2376a218c4898213a5b63792ee59a6ffd3ab94d5ee0c799faa1a523",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "62687e6a157f7026b9a742f53484123b1941f09a0058f24a02ad72051754500c",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "b74f484cdefca211f7b5c289a7c83d5ec93388593a3d03608c073921d06b4a6f",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "4ca33ba750a986cc78ba8cbd39df33e2cfbb5d62fd3d701cb6ae599cea426809",
+   "libsodiumValid": true,
+   "valid": true,
+   "kTimesElement": "3a8c9db89ff67337e30f7a673a7de270577fcef0d5dfe7a7497a837dd1416e04"
+  },
+  {
+   "element": "6ad51bc4077b46f0a7dcdd501c97575cc1e1308ac278fd51d2320b1c69582575",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "f1c6e8f44aaefad228dd71e4228c476a311793b30dc308e29e33098c2c7e14b9",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "34854fce67afe1cee72545d443c4b1f225465e135a07ee8b44f889cab46d4467",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "b1b76c28a0073a63aeabfdfbac8644fd5686b75aad8640959e04df21a8c7de24",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "6e3fc70197d647ba8333a3a1bf11f979b509cb256e2ae9669ec8e09c6ff4c439",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "248e69ec9dd7a90202f58b133f3b019fba9b65ea6bf513e09cdff83d4ee51826",
+   "libsodiumValid": true,
+   "valid": true,
+   "kTimesElement": "babddc6f8c334cd7dc141a5542953e282b02eb823b6d9f02e5670ae20d5e906a"
+  },
+  {
+   "element": "7e8c0a415b47e1f27b966d556708265d02cba27650c75a3d7e82d11f26dd389b",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "a26e0eccd5113c4f2138f4a93e1ccfb22ddc2bb1e0ff189bd3dc1e978af9fc6f",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "fcc08a9aa1d1a466247d84dc19e3c805d2c2705006e20c24dd821de90642a468",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "55128eac3efa405f0d71b9123b55156f7318ae5577802311b6cd0e5941a5bb77",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "74ee993d0ff7813eed3c36149b5b334208d89af02fb12adcf695eeb79fe85313",
+   "libsodiumValid": true,
+   "valid": true,
+   "kTimesElement": "de0427dcf5b5ce89b35e9c6a0918154eeaa0c1ffcf7f82b2e6d130f729dd3a55"
+  },
+  {
+   "element": "a688b30b5b72b3133920adc2cc4721535f18e22cfa2a7ed84caf17cf9bacf6e6",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "faa1e92b28e576ab7152b7ef8a4167ef2b407a7429d30178aae040db95dd22d8",
+   "libsodiumValid": true,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "4df22917306f8edb68df028f00f4608e1b692a28cc2be29fbf2703400a5f986b",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "ecf3de02163162819619123b83d77d568296bf094088d6f2b772e057d30f21bb",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "7461f206519543c555fa5f2b770035f4ef64691c44961d3c2142375f0165bf89",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "106c5438d6a43409eacf0dc577bd820480cdea9aeddc8180a4f94d9df3529707",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "72efde7fb4b8c381624db08997b3adf29c94d8610f38f9fdba05e8920a958d42",
+   "libsodiumValid": true,
+   "valid": true,
+   "kTimesElement": "043a99d68c8fc61da73418d87b4875ea70fd25f8d38f779b7fe6e9ea55a49a04"
+  },
+  {
+   "element": "d9014e9094b5c30cbb4c2286401120f1e2ec40fb32cd77e8d4401d5f5bce2d5e",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "774cf6d9d4e2c84620e9c9ffd4e27b36433d8303716d3f2ffc2f22733bbeb67c",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "53f26f662ea03465514c038c3bb8094b0970e6b427d08af0c1877c0706fe6854",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "1c04aa8fda62ebe5b7c55c62dfb4f25d13f771c8ae592b5615615c687aed550c",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "90e36b23484d2ffdc2ddc5bb82a5c0dfac466cb8487c8f56073a18b5831ac227",
+   "libsodiumValid": true,
+   "valid": true,
+   "kTimesElement": "6089e6ceacbfa38558249829b0afaf5773dbdec7913253f2743037730e496b3e"
+  },
+  {
+   "element": "e4dc539b5117868644dd1726d6100591916aa884f95983a2e820912722a7de11",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "dc136ee96cfa9b0fef0dc4bfdeb2c8e57fecd0cf80665f8e43c4c9de50ad1dac",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "dbf6a52dd5330e7ddc1d5fe9e8742d3a6afb86b25258d560bc57d471b74372a7",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "0463c584f6f601ed18e44f75c8caff54df8eeb3ec307cf970503726494e6f65d",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "a95cdacac371ffc946fc5be6b08db37f9d3bc2eea31b7eefd082603890522737",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "0c3078d2eef69eba0471f8fb9625ddf38f6bda48c8b72d3bae53d4fe774f7f7e",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "cbc65436e2144fd3385c58edaa3138d3aa8a54029bd521a7b6ae192f9e849550",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "e09745c44fcae111a0e2f4cac71822b681a374158ae600bc31f2f03d2677bed8",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "7f6790cd0f5180d9d943b0508850ee6e7981d4212381047c126260c3f36c70b0",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "829fa23a59f722691f6fe6d627a3879a53d43fa1a6970e66491912e0a3f72977",
+   "libsodiumValid": true,
+   "valid": true,
+   "kTimesElement": "6411a8137c65db50a66981644a7ec491773deec175df8b97c9a871a6cb01f35e"
+  },
+  {
+   "element": "32c2423fee0fce243d7fb22b336fc8661ef3c48d5ca8011ba9ab1eafe01bb563",
+   "libsodiumValid": true,
+   "valid": true,
+   "kTimesElement": "26e35aaf86c6d67afbeb142e465cc8986165196dcdec7e49249cd7d47592f10f"
+  },
+  {
+   "element": "36d22330838601c885cbafac46e12b063fda0de517b0459d9432cd2f09bf9744",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "85b766c49cebc6fdb7f92fe767f8fa8d042f6f27f821669440619c311b6e2e4a",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "75141d16ea5199e3368cc07ed5ea02605aa38b85203fbdf85948599ea79f9321",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "66389cb1ce70b02e775e9a5726ae4d8020b8fff9661a6692d3a2ccd6a5161079",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "496166f6be125092cf2afff1b66056c075a6fc832196ba4e5e3772642d1618d3",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "1a437582c1fb8550722b788a8b2937d15086e5572599da9a9a041c9ef5275b08",
+   "libsodiumValid": true,
+   "valid": true,
+   "kTimesElement": "2e61d51709afc5abd6af778bd53be308cd158c8c8effdd55d95103b6cafdf83a"
+  },
+  {
+   "element": "318f4c8fd333aa802a20c5c91fe52aa963d69364a1a010ff9b64b1861357a820",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "e6726b24c890bc428895538529b2234926f5ee067e2d7152b22133803386c940",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "d44d1d1361959a26ef245f29fc854ba923f8fd7f46504f25ef28dedba629124f",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "122af13a0489ff82ce4f42817254abba3f7160e5fc6b7fba271697657601bb03",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "f34da3d2bfe5ce9e002ca980f3280d1f854358312d375cc136f907bc9d91ff72",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "087abea630b574ebe2aadc0842120fa65af12072e73971aa2bf7ffc54bb54c3b",
+   "libsodiumValid": true,
+   "valid": true,
+   "kTimesElement": "d66215dfc93d00a508f6143604281d6c74b47abddb72f5b29eeac042e2989763"
+  },
+  {
+   "element": "c4805cb2645a0453332aa0088a8be9a99f2f02ea6c2386f53e1d568d38370577",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "f8878e75e09be224a96b5686b6e9effb554706748e28df7b982f5493a6d06d61",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "5a790485fd69f91ebbcec5520242394122b25ec91d0249fbd07b0efa97276a7f",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "7185bc480b89c194e0c7d7bceb023057397f20bf435786eb8339656afdd06f03",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "6a92fd3c5223f844569873eb644f53085182b615c9557ed4f1549a993d4e1b5a",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "f011e3b93a86cc961fc0ebd3f59ae24987565b91a4724a67d2d01dcd60d013a7",
+   "libsodiumValid": true,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "16bb13c1b29ed43a7b5d1e70f77201f525945c1a0c63e7e485bc17d1b0fbbbea",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "3b89c6bff273779e6fce7b5b24c5dd5c76bf818bef6da9eb56b4a1991c9ff1fc",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "aa2677f7f3e349f7b779b334e9612e3fc394417cf0dbf22c72efdaffe442e34d",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "1ee43c51eb8a79f0990b58061ed875441524ae90ba59b76710d7a7bd32e5fa1b",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "1041e09c5eff07cc9f7db194ccdacf4e253d799d5a6fe281875bd486829674f9",
+   "libsodiumValid": true,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "34bb4f5e78f7b638cbff868070209587a7e44e779fe36e31d037e35ab61f2b34",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "4db827e06e1463664ef4131ba60326d55ccf9fb5686950c752a22c69fa0c8a16",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "4469b939e6266e8e3b16ebc9ab324fd3a0bdbc7719fedd0b9f9a8080ffe64e98",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "f6ad482fc4d79b91a91684fcf6f68cae7562791af28531b9156c24c057c9ab43",
+   "libsodiumValid": true,
+   "valid": true,
+   "kTimesElement": "a633cd5480f67a94216c1eb72e817e13fa175cc3afd839904bc786e54ae25759"
+  },
+  {
+   "element": "aca9f6e0f39dba75110a4c8b19ce25afd79d493c2c62948e3a8907cfb3785b34",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "92dbc70a229c63917033914c35888530b67ef6f36bb5a9d58207ec8a4153bf7c",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "1f1dbd2094cae58e5d7a16e1225fd466b1bbd9fc0d8ea6ee69a64e2184ef733c",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "80151a34077ee79d8717766104258f06ed0ac1ad4d839c188fe6677dae4bbd04",
+   "libsodiumValid": true,
+   "valid": true,
+   "kTimesElement": "a8cc33bed7cf87a48d0d680d5c79f68bac20c1f3d0ecaffe5091332d2e5c684c"
+  },
+  {
+   "element": "d8a1c5b4fac17817b5f1a5e3446cbf5155978c9ffdc0f0319738d8c6b4ef1857",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "b17ec5a696390c83b1d5992e60c47c8076cd3ca89b30e8f59509308e5fb92e1b",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "90d83bf7113ec7333cc010b8fa3f41cc5cfa2e40531d295946e781753cd61760",
+   "libsodiumValid": true,
+   "valid": true,
+   "kTimesElement": "861a330d11a649532a6b287c5528d5c4ed6acee74007d394792d7fa8932c0213"
+  },
+  {
+   "element": "2c83d9443e96c04c2b2975a09c02f65e524451b08ba5ea3f030a218712de2430",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "01340e7dee4e0feb4bc318a5c7e18d40c3deaaad54093013330da8d72f161dbd",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "9a3ca410e89ec96e01a3961149050480470e85daedc06d6f11b7f16b3c839364",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "ef03acf0fe7dba29214bb69fd223fdca4feed5649fcf506daf7550e2ace77946",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "bd199badab1da377bf4192225d91cb2abb85edcd72257cee3ee3b3d476622f1c",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "05f25090980d008b28fab3a4a4e160f36fa795905c1a7379960fc7d436a48125",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "2a51be10a2d1ebd3d2b5479486fcb524e0060027f3d5a413d01a1bf016491b6f",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "1dd06d2d456df846703522854de8ec865beca1dfe44867fa03d0b5a5d6fec67b",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "14784a7c12b6793fa5760a0583026784b2ee8a5d500ef67f063412cf116bed43",
+   "libsodiumValid": true,
+   "valid": true,
+   "kTimesElement": "d823b9e456ef836f94aeb821a0a00e6f12935459afd0ed18b15172e55932631d"
+  },
+  {
+   "element": "1b92dd011f9ffe1b2200aff30df037479a2a50b3c56c10290a20cb3f7a75404b",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "2da05db82165fd0651980d2a4c39ddbf697c2959c8d8f6ac2a98e1d922562f56",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "987d4480df8cdff0455104511562cf2427e67bb7c58ad69831155cd5c7b672c8",
+   "libsodiumValid": true,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "7aef98a67bdebb5ec2673778a0bcfe25372d09545352dcee5c6b099e1870c70e",
+   "libsodiumValid": true,
+   "valid": true,
+   "kTimesElement": "f8496e27ab1eb0bf258758f7b657247b8f637d53f39e87044701066d1a3a2f20"
+  },
+  {
+   "element": "04aa03fb80edddd70a5e57a5952b933c1ac036af14bfd38bdb03e0a6a65cff44",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "b5d7153fa3f691dd0023320872e23a8aabf05a03cbb6ec87382df564b0456f2d",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "680b914db907fdcefb9705c5fb781f879420906a7c196fa77900659d3f5d554a",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "1e082c19135a9e32074dcd3ce0a849c5a4b8adda0d558717474162dcc24cad68",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "4212d2f0d0f062d9d40a5fb73329722e40690e2a1de865cb5f9241e59b6e6e6e",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "bb40c96c9630174a99b12a2b42071e86f173451d0a104df1a35ac3f426ab5e31",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "d90c131434d5bd06e4045a93976909325eb4396ad62c5d761d0562bf6d6403e8",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "0ac53f5b9816eac367a74de781aa2faa7e52591ff54722456e7027e6d2256232",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "fc8898a812c98dd8938c1321e57c6b778e22922e2e93249121ea05a90279fe21",
+   "libsodiumValid": true,
+   "valid": true,
+   "kTimesElement": "b6e4befc76daed973be81d1ffc24f505ffb22a30170119850fda7580d5ba8316"
+  },
+  {
+   "element": "4f64fe972382a62f547cf379a356edab5c9b1000d17606601a86ad8c92e49f1f",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "994ec95a47f26e320101bc3029326af3bde063b5b7195b02165e349c1bd0f70c",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "db65ce789dfd659009ff0d738021a4b17b98a9e646a810ac0f8f212f5f146de9",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "59d0323e46e8c56c7cd058088533bab9ababc92eb61fddcad855b837c6614127",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "5df3000bf3f25cbf888b9e1f2881c02313e7e6af12d872eb2bcdd8a6828f398e",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "c9bcb1ea2efe9034e276a6cd8a8bb90261cf7624ff579fa00c3cc789563b69f1",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "f8d746045e7742412b4d452f955805967a4642b03516753e907ad6f59b8f5903",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "6dc23a17414bcd5084412ec26f38cdf36ec1bb236f2670b9659dda874286f7d8",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "3b6c289329cb1bb19ed36830efa9d93117d3eca3db0da692de7c77b145531413",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "0d1f63190ab5386c60109ad1d51a2cbbcd881c2ec7f7f98135f2d21cfa1e4c31",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "d61d5225d2073b2dc95e145a730be8c525acab8af7a2f9f3431bc9b6b960ee2c",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "db1c3b2bc837f51b30ee08f515d15a318d4ee4e70ab285318b1f6685a0e2aad0",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "8dee48109cc599c9a222b6894c912e630eb26aa229a9c23ebad998119b85f1b9",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "e8096c144b669486c1fa13a0b784a9282d791ecb0e082c45dc912505f7a04710",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "1d860448988b8f90620217731c503bafa5fbab802c7753984beb164a9611b13a",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "ec402fcf03d23c8da5fc9af1a73448195f33be744bf229886556f41188549e2e",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "b949353b38d7a2ff49b020a855240c1ed6247c32ee9e7f35d76b5df1fa6b090a",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "d604afbe52a2a9c390aee095aa7068f47bb443f65faf3f6c70cdbd08c8322b78",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "b17a3779dda822ef0d1f10b0488b7d1308919ccfb095aab1116773607a2a3c66",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "207ec9fe91e90fe0c4892db141d5259a38bd4643476ef48be403e72c0f5d9604",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "0d4a07507bdc4770fbb8e60cc1bf16982a3393417281c78261fcb6066bc92136",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "6a91c851fa88cff80c8ef6883c0a2a5b79bc13a4eb3c88084a9c2ef18b668f13",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "f58fac97cd370c15a05b44777f9ff47db1cb462adb7c6bc60b437c5f8abe4308",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "79090e34f19835a04142422b81733530a95e6d3dce937258b803673b33fa5550",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "fa298db012c3c2c1000a387cc3361ea6125f512def144655b0ad0db8380ad621",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "2407e91e79efa265017f1d8228e57a19f866ee4c0b6a4139c2eefb61ae4da376",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "53e2f0ff0e28f76c6d4047508a0f91dc46555b06d3200864e2e188797ab5f1d9",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "895eb8897faaa4d5de17d0759907ac14a921ef258416c417b6a11311b132ed0c",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "95a582cb6c31f110f4e5af3a92d7ec7b68e0464734bb947f7e5ee9207977da18",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "8135cb3b8cc6aaa434930276ea60ce684ddcc3caeaa815ee9b8e8e1429a86f4d",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "329f69b1f154bc474e88613da28a4706fbce92622356088f47f0c0b57a41192f",
+   "libsodiumValid": true,
+   "valid": true,
+   "kTimesElement": "9c8573a32466994299cd89d0b266ad54cd8d19eb2b4a961c35e7faaa6b67d005"
+  },
+  {
+   "element": "33edae0af0f02b9525e1680328b5fcbb1dada3e2769b432ef6441c167e458ed0",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "8d64e08ecc2351e44fa6c07c10b4dc09a5cdfa7eedfd58633421916aa031d220",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "367a1f0b216368119bf387e434ec81dfd15085e37c44595314ee3f0913e5cd0c",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "3cfba839767dc909030eae4dc51ab2047a96f36e0d0cf85ea67b089a11969757",
+   "libsodiumValid": true,
+   "valid": true,
+   "kTimesElement": "0237cea1a09a1fb3c95950b34466b06ff1eb5a18d5eec0e75239fd71e5039e53"
+  },
+  {
+   "element": "ced74b9485d7dea3ff1b628f73042be71bc27a4f2cc7ee4b5cb8fc6cacd52d4e",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "21c75a0ba4c509c91b8fea69656bfcfbb86b0a842c0516e0beaa508ad9245a1e",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "8bb475593e4c923bd45bfe4c5103ecc171db7a49fdd3728a43e9d96bafd4b6ce",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "f0c9ee222c4a3bc36cbe966de5784775b9fb8e1e2515a51b46094148e7dc714e",
+   "libsodiumValid": true,
+   "valid": true,
+   "kTimesElement": "d4d629478f375419582dd4e9adbc10e05182db04ff99e597e5a5b91dc7c34725"
+  },
+  {
+   "element": "66a91f3b1710fde9c7b77011386e7969762dfdaa0c297328c822c5e64d924373",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "dfb13832cd43491f9534fbedb1cbb5192954a8f63313be985aef2186a1d6367a",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "5f0ca9ccc7c6acd58242739e585d234015adc600c515fdf96c90876388de0b25",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "df0cd0ef6cdf519fb4ec5a23d5903189f5499f1ea3d22a8a4c232e43774bfa79",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "e337f1c7c069cc81616a96ae7449ad0dea6f5b68ae01af9a8e5b937065051f69",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "ccbe25860887633c8d092e0d23c9a79319b2465202335312a6e0065fe1a8855c",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "ce6b436d78a1906d09080cce5b6c596fc9f25e5d019dca6c122f4fdded001467",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "322a1f7a8202a300a535c1c2924f11dd27fb813d463c57aab1ab52e60416dc64",
+   "libsodiumValid": true,
+   "valid": true,
+   "kTimesElement": "2e457d3b7972767fb2a7e7f3b0aa82ccb26228bf5a62e0526e213abc4df88d51"
+  },
+  {
+   "element": "f6061796c6e4614011bd27c062b5614a2392c86a482de3ebe28e29e36079b5c7",
+   "libsodiumValid": true,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "183dfcb709f8b9fcda7c4d7c62a7be8837ef1f1000a981bbcbef2d1aea477757",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "eabfc1d76432c17f825c98ed177c2f4c55012c3df55c40ec182e3eb24926712b",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "1eec7f17ded70db840074db1634feabc16ed4bd6a7c846527c7bdadfec4b593e",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "2679a91fdf70fb9888be4967b09f564f4db68de2743bf2a5d7e7a50719a90a68",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "557e1ad3f2fdc271148409adcb8e1126ea34f08d0cea726f5019ba5a063c3434",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "a691ad8cd3ef693ab84d2d6dd7f3a4be50049dc007b815f08a031c9e2fb90e5a",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "0888015a7cfe395724d19bea2d7eef334cd06402a3d3e3f51e588e101e8bd92d",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "a9d5a927255b44f5b427dae92ae61310d6d40585e93a048a4441254b1e3ad711",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "5a09c744561ffe4a5feebb55bf54b4901230874bc2a632ae3bb28c6c26f78a3c",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "f300a2e9fe34afff297f390e57ac09fdc05bcc129331a5c11f9f9551a9e30ca8",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "baeacd16cb75097c365cde8ae3dd29d4e517abfec413cae5a81d7376760a2d5b",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "baec7b5793239699b626d36123fb915cf3cc077a2fc1f97bb0a34b5045279b2b",
+   "libsodiumValid": true,
+   "valid": true,
+   "kTimesElement": "b6a325735fe1c3911882605c61f931a6802c2e210fa5247aa2fe28f59bd9b97d"
+  },
+  {
+   "element": "17a96eac807bb799f698ba55bee65c2c28ee6c0acd8ab51444028b0fcc99c0ab",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "4e5a2357bbe5e8721a748c30f489d1ce55df27bc4ff4da26c2ff10a07280bf11",
+   "libsodiumValid": true,
+   "valid": true,
+   "kTimesElement": "2ab201251041478164905da204ea4e96c0b13744b5213fec96e2356ce995f102"
+  },
+  {
+   "element": "4126106edc451cbfba5148263b13f07ca79887f3a0218fdabe0da904b037ccb1",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "7e4fb632ac6a832355e41f4a759939da84733bb48fed09ccd40f95e8fb63da7a",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "5c8ac87c651e4ae607cccfe7e071b55abb3f7917b74b3a56a29877d13107e133",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "112d7288909bb8584a328389f9e218778c49176baac12df090c988702562043d",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "d7811640809b7a02ac36e7b7b22a4fab1cd4eb9244b5cc2c8b0d25086a07e06c",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "6c8171f6ab0d272957240c747f867469a8de4851017769f70f046bb97810500f",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "5e451ecfa2e9bcc4d9bf95eab3dc529f34390f67998543f0175d723e3c99b246",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "48b2cd2db4261a08de2dff7077bc540de07231519c138796ac007742adcefc58",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "f72aa520bca3d4cfd4a60b9c7fe2994c6155fa38f2339dcdf089a0faac42f09c",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "8e692bd43b000045043b81f699cc11ae5f3c265aed224bdc1f7afa5d26464386",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "944edff168975126abdf545c746157bf7881fc358592ab0a0d5c0a249ed95337",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "28f56bd94b824b9a6f283aa1387c07a91fdde277ba722c7c34693759da3e735d",
+   "libsodiumValid": true,
+   "valid": true,
+   "kTimesElement": "841296f2a0d53cae4f085c1343a1d16f1d3411f29d53865ef76962640ef3b446"
+  },
+  {
+   "element": "6141469a725e6c647406efca523d0ea45dae26341cedc38f4cd44b46262ddee6",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "be2029cc8fa5f969449db879839ec3c76dd9f14b37ce955236276b97d8f5b20d",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "745405c41b920eca9e4a64b02b50742efa9cb53ee696c08d90730882f6f2af43",
+   "libsodiumValid": true,
+   "valid": true,
+   "kTimesElement": "ecc4e1378bfa0cc3dc1b8485e82e9acbf4b787034b839f53c85f03f92d0a1345"
+  },
+  {
+   "element": "948b909cc8efb27a4e9fb6c929b8ac650ae138e9bc36fac85f65a6a43511a919",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "e9fafbacaa9dfe1c01809c0a65217930e52f898eb001495263d4e5e09082d776",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "ef05992fb79de3318fa5bb39a562940ffec33e9fe83411cbf755a8efad00cc1b",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "97db911c9ac44f8b482571903647a20815407bc0b2162482b28f4e1376bb5283",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "3ef5a34c378a9cf14f98de3686c4d1dd347abe21b65b135b8291c13ff67f459b",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "c888a71e5a8cf211581583904a50aadeed99a77c9581adfc16e76b3f5fc44d41",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "dc6107000d69fff7ba00c82329733a9815df5da8b7c41455186952e3f819e611",
+   "libsodiumValid": true,
+   "valid": true,
+   "kTimesElement": "52ca8cdd36d401ebdb60b3c144b706ec051c8616b159599f598a1b9c4523aa23"
+  },
+  {
+   "element": "e6ea5d12297cc95e958a31e2a2a4ca47860b3f66f37fbf396e2cd73bee06846d",
+   "libsodiumValid": true,
+   "valid": true,
+   "kTimesElement": "9e2eb165e4fb72068d2e99d13dabeb05291e0459d485ee5ded02af8c75a46f17"
+  },
+  {
+   "element": "020691b494c86e24a3b8983a556b67fb6fcc75d9a2cd56fdb8dc2412cbe7f746",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "965b6762c2ed88f2f731f49d55b21c70ed02140f8989275a6bc102e69c1fae18",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "e428615a7035b1374145c72bf20a211033a8a9e8e3b33bb5688f351204194d0c",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "67a8367fbc59bad3aca5b8bae0881800e6f2a5d39f02961d6afe8879d0ed825b",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "0b007982dc975c74066cd83099312dfb70421da2549713e78bdf0d86deea1b80",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "c7a2991b589bdd5093b5ea7a2306f8f5bae976dc930931b59483292e5f319355",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "96c74385e8f6018fb66bff8c79407232f88f1ff50cc112cf62a01e1fc8f02b5c",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "71376f9b13e217c59b575e14c358f04ff410854b18bd1f8a8d25a76b17b10a57",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "0047c05a7740f635132bfe9fbc9f9b95d08f428fc4869a982b2e377761724a44",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "e53dd668170500ad88eb18c73bcd4aa313cffce8ffa95b8ea7b5f41ae89a1625",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "f42aa28efdf0ec81a1ba60be06c8a0e21f774fde4e9ae348536f8a331fbe4b93",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "72f291024d5f0e122b60a753ec82b0bddc678602d734a5e720a599b0b03d09f1",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "4b8da93b6baa2154632c700cb2538ec4ec9b1f6e29504162e795e229ce51ee75",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "a454ffad1dc8b82379c0171546b79baaef0e73d4f9a33a6449b336e121705722",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "a856be9f66f66811ab8570635445bd4f3e44b08c1aa4184c04b642d259804266",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "2cdcca8698eb4599fae4a00a98860d7fd3ae744f8c9d113a1346a9e80b17502e",
+   "libsodiumValid": true,
+   "valid": true,
+   "kTimesElement": "10984bcefcac2e8fd9c3b4f3f7ecca670c168a29ed959f381580a3d5c5707006"
+  },
+  {
+   "element": "721bfcdcefa487ded1ecac03d00a24658983f9c54a7becb659be06f94a0eb068",
+   "libsodiumValid": true,
+   "valid": true,
+   "kTimesElement": "d002c4efced65926a33c9176c6b306e09783d6d9e7e7d31e19992ebe6f01a428"
+  },
+  {
+   "element": "57f1579d2d684d794e4229aad5187f73472369c21229af316a1f0a65bcea8d0a",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "4448032050b408b13dc52260e00bd698a49cca63c0a8c145e58a4f0025fb7e77",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "36338635de3ce8f53c0bc4bfbe55d05a3d88bb27985a56d21a3725a595135422",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "7a3eba9fbf86a2fbf62abe0470087fd03fd7d4b099aed60867dc427bd842babe",
+   "libsodiumValid": true,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "40b2d99257be6edf9398d041552d60e28d8f8ce9d3cfb4e6f7b4878263528275",
+   "libsodiumValid": true,
+   "valid": true,
+   "kTimesElement": "bebbca1041dd01abe8c29da34f82e6f87fd931cb5e513af0465c133700dd943c"
+  },
+  {
+   "element": "ccc9f9693acbbe2e370f2d1146d19e2b7bcf0d88abc23c3d9f365f1615b21a99",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "dd319024c6da95ac787bdef36f9de6fcfacb18c22f1e4f4f080f0737b732e654",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "3577f875a36b979981654c84bfc6e6a2ce261ae60af2fe4a4647fb4d07a8bc60",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "dd1eba350aadefa75ffcd12aa417ca7c399ace981e114202211c0ef70632952b",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "cb55bb02c3ebab49ada96220e1c69cbe86ade9eb14e2f2c5ec9d653b6a34d12c",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "a6ac3722d12a271ee7e80bc366c3947764c0adb3abdfec3ad217ba203794933a",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "7a5d67d2f7deb4edb77770a29e9f76a0b2b2def0696a7c9f246190e429e2508a",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "303977e39bb26f32d538565782bcd83597f5e7875a35c6aaeb5be2d011655a05",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "20fa40e14cfd0f66b569dc8ce880024f53683d29b0b43a4c7dc6ce0497aefc0f",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "e28f013e5d1e65392db7974b2140895edc92f0413d6d53d86a79f39d23ff4a62",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "9cd191cb1437c0b18592f348d81003e70c2221cb08d4ef294f042fb8c36bdf28",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "d3d2c139a1f315371c0d151fdbfa2adfd7b1a4bb6c05e064bacdb809ed08de3d",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "70fd63232cbb8865eadfb5ca4dc37178cd9723a21d25b4f1de01c6eb800a0b76",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "c00474444751425947dff5e41fcf6fd78a82e88ef046cbe87750c2dfc8e48f34",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "22f6d4d2c9f32849833da27313e636a471dd8acf0c9051699b1d524474e9923c",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "52610995abbef0ebdbaf76d7103ec005f38dde108b7d492a9b18485a9b002402",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "25292a211b7dc3b01337beeef637bc9ed8fd1611414fcdc158255f1889aab366",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "b281fe4000999827a3f55e4589e50ad48655816ea0d623b700a606a34c9a9531",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "16b911185fbbec1b8dfd7d93c18a9cab5734fab2ff4194fd0a0a82b9d5507668",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "371d2e9118b5288edbc007128f6f06a358c106b0b70cfbffbe10003e954dd57e",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "2f4cba6212776af48c0c4bd8045f01d9f0abe7c51820a9687d1ed75e5de0b3e1",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "6977c99b33d46a65d2fa9c6823736c6982a23ae6f86491849fc68b89b699e352",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "dbcc706a1798fa62b7abb3510aed35811867a991a599f5a5ca5a4b62fa561de9",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "4226ea5c756fba35475f23aef6b35690062a24b8abf3cb515f565ab0962d9839",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "342887ee37ba02a0d380488a66878c004d981c3d83a3fe1c3de480eac72380d4",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "e8232e0f917097aedefde60b63f3a8c8605fc43ea0798dfb5a819bd13691f015",
+   "libsodiumValid": true,
+   "valid": true,
+   "kTimesElement": "725539e07f41ad61c73e362c2cfd72c3929c7a97ffbeb0de8748dde685e1ca03"
+  },
+  {
+   "element": "b2a61da587612f8a13faf398998789cbeee886a0808378edd4cab0aba2b79b6a",
+   "libsodiumValid": true,
+   "valid": true,
+   "kTimesElement": "327b39e9defc0c11f412900bb9968adc156a56774cd95b50d86764a51b857460"
+  },
+  {
+   "element": "facd123788a28c84ad8c26aaede886c15a217e83b12b3fb1af772b1304d09654",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "de32a94511c5971682b96c572a9b36fd3ffd9cb2b2387c36c87d04f5407321ab",
+   "libsodiumValid": true,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "674e0bdbc13899c99ac18fd5f1c511bb166666a11640acf1cd7d3bbb34347b0c",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "c25168d904d6d432d2b31c2157f24a5a0577575e047f0cbe41e52a1083f54429",
+   "libsodiumValid": true,
+   "valid": true,
+   "kTimesElement": "36f8712aea72aa851e7e785a0931b9b5e74017d76fee15b0c77b96e673d24f49"
+  },
+  {
+   "element": "88c52e4bcf7e1b7d1f51d94c1b7ec5f189bc8b89f424092e431a38c03d35237c",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "dbf1e57fcc5af2661d6c056b7677596842631dd42553e7b4b01859560e5efb0f",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "926a97c27da1c2fd5455c5f1b80bf893f525b62521bbd213146282105e4e5c67",
+   "libsodiumValid": true,
+   "valid": true,
+   "kTimesElement": "1805bb96ce3ca8c2f269304269732ea91be441a09d046fa16170ce71092d503a"
+  },
+  {
+   "element": "e61cdc201315c5430d964bbdff79acd15bda27f6d4043d5250121b160cc957ed",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "b4ff514189b2d56dbb756b7598f28938e0562faf2911119aeb8411d97877e9a5",
+   "libsodiumValid": true,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "b925788d7e4dbc8ed2d10ac613883ece7eb7d3afc89f350b358fed3db3d19477",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "16132e265b3722f88ac18af0e7e04473257acf7fb32cee907ec07106108883db",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "411a32d7f2730f9efb29762dc462c35eeddcdba8eff2a6c4dbb97915ce6afa2c",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "9e63fd8d7db4522b131ccd87eae1adbb1f1c79496187a53c39e6fc6a34414722",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "3cfa47dd52138e4e0e059d919f8ad7ccfbb2120548ec342157e05800e359c668",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "8a45b5a78ba148117398ff5235477238c2ad50493b26d8454cc17407ded541b8",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "c40d74902826ba415956dcb7bc28862ef1cd20cedc6095c89228538132599c67",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "b4619b253f8a6595a2cbe1c93f3e56ede905066d4c965796e695aae1e8339fcb",
+   "libsodiumValid": true,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "3372ed653b9d6c495b297a7d3037a614a4359170730fd13e2803e64dc2154355",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "6839934169aed3d0192ca643da7f75bbb40550b2f4b72b7c69ce2d7ca623711c",
+   "libsodiumValid": true,
+   "valid": true,
+   "kTimesElement": "c41b1d0a397e1607febcdceea2cdc541ac04cb17b28aac7052bdc364ff74ec5e"
+  },
+  {
+   "element": "1684b1f5735c5cc55b8a561bba0abeef6c0e949770c4dc8240eb358517f9c16e",
+   "libsodiumValid": true,
+   "valid": true,
+   "kTimesElement": "00c3a02d2ea3f43a2352ff389828435f93dd340953224122b2982d21cbabfb7d"
+  },
+  {
+   "element": "58f46254b4e334696f4bf229dde3234eb4e0a75e430bbb7cf33540e2cd82244d",
+   "libsodiumValid": true,
+   "valid": true,
+   "kTimesElement": "ee7cc7d6e5b1782252e941eb9798125406253cfe460cdf098e02661778d8303f"
+  },
+  {
+   "element": "58f46254b4e334696f4bf229dde3234eb4e0a75e430bbb7cf33440e2cd82244d",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "a0cd639a644d3041d31ea10e5e910b846869c11ced2a83b82388b2564516062d",
+   "libsodiumValid": true,
+   "valid": true,
+   "kTimesElement": "c826909f470f888527240a35d75fb459795b8e9b71d3ca8d2439179826d90e49"
+  },
+  {
+   "element": "a0cd639a644d3049d31ea10e5e910b846869c11ced2a83b82388b2564516062d",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "569d33f0db12566cf159034632568bf65c8da0474e1d4ad51903c5c49fe4537b",
+   "libsodiumValid": true,
+   "valid": true,
+   "kTimesElement": "c445775f9a31d3a5afd4b58c6d29d2e737722bf423314a67611d92cb0657c548"
+  },
+  {
+   "element": "569d33f0db12566cf159034632568bf65c8da0474e1d4ad51903c5c49f64537b",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "a25929dd485654e9961b69942f05b69a6954243e2108189429db2ad663344e30",
+   "libsodiumValid": true,
+   "valid": true,
+   "kTimesElement": "4023f51c0ada90139f173a6edfec6c5b43e78dec587550739dbbb897b6aa5d1a"
+  },
+  {
+   "element": "825929dd485654e9961b69942f05b69a6954243e2108189429db2ad663344e30",
+   "libsodiumValid": true,
+   "valid": true,
+   "kTimesElement": "766898cd3e8e243ccc263516a4592e58b673d3a2c6d603d930137d2c44f5f371"
+  },
+  {
+   "element": "88479557aaea95051113368747131204fce5084197551d4e24c6da8ad731121c",
+   "libsodiumValid": true,
+   "valid": true,
+   "kTimesElement": "bca62176dd0f9a4701a5f6135215cbea88fecd99bfeb0631ad70a84ac9419239"
+  },
+  {
+   "element": "88479557aaea95055113368747131204fce5084197551d4e24c6da8ad731121c",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "4cac0eda7b31cbc085ecd4e8d6f62f43c183dd8a8836c64ec594a2d62196af71",
+   "libsodiumValid": true,
+   "valid": true,
+   "kTimesElement": "96cd83101a900760233da7ad0c799e4656da43645553f90de7eaad85de35d52a"
+  },
+  {
+   "element": "4cac0eda7b31cbc0c5ecd4e8d6f62f43c183dd8a8836c64ec594a2d62196af71",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "04d9e174bbc6a9bbf05a9bd96d062978b79b94e0d58ec62bf710bdccfafaad47",
+   "libsodiumValid": true,
+   "valid": true,
+   "kTimesElement": "b6e5cb733e4950af1f7d48ed2214873bd52871c9dc5af039d5fadeee2616d872"
+  },
+  {
+   "element": "04d9e174bbc6a9bbf05a9bd96d062978b79b94e0dd8ec62bf710bdccfafaad47",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "982a90de8c4893daea7c6791833d56f02952520b709d9a2d3f69ad26c62f3151",
+   "libsodiumValid": true,
+   "valid": true,
+   "kTimesElement": "8ccdbbc6ba81fd0a499446cbb9052ae786da6c04cadca58522e053be520f0a16"
+  },
+  {
+   "element": "982290de8c4893daea7c6791833d56f02952520b709d9a2d3f69ad26c62f3151",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "5a2a59dfa6c4ac3b688e4001449630774e8187bcda4906fe1c8b1d35d2bbc97f",
+   "libsodiumValid": true,
+   "valid": true,
+   "kTimesElement": "80f72fbd7e40120e57fad9aabfd9f8547aa527df64f84b596bac8525ed3bc32d"
+  },
+  {
+   "element": "5a2a59dfa6c4ac3b688c4001449630774e8187bcda4906fe1c8b1d35d2bbc97f",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "742f494f79f189a20be7fe0fd1cdba61cf6219ba37ca6f85ef33e9485cc39011",
+   "libsodiumValid": true,
+   "valid": true,
+   "kTimesElement": "720a9d150f2b9d93f04aea671ab16c3d5baf04af08084e61cdf2fa1d2d548421"
+  },
+  {
+   "element": "742f494f79f189a20be7fe0fd1cdba61cf6219ba37ca6f85ef33e9485c839011",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "cad255b9dda9a00f2b9310d9aaacf811b9274082a5d3b1df0375b5aeb26e5961",
+   "libsodiumValid": true,
+   "valid": true,
+   "kTimesElement": "18e0ce1dba7ed4719af550fcd510a8bf5bc8806e29ec6bcff69bcfae5540805c"
+  },
+  {
+   "element": "cad255b9dda9a00f2b9310d9aaacf811f9274082a5d3b1df0375b5aeb26e5961",
+   "libsodiumValid": true,
+   "valid": true,
+   "kTimesElement": "2cfac486c4e3b74db7c799f79bee684f43a6198355990e1eb408f0bb5ed9622e"
+  },
+  {
+   "element": "d6ac893ffb9db223e5707d515a0028f31bf0283ff57056e7311a81db45cfcc6b",
+   "libsodiumValid": true,
+   "valid": true,
+   "kTimesElement": "340e4e9d47d34a821b50dd170b4c268414b320d8af0d9df918921debd2872d2a"
+  },
+  {
+   "element": "d6ac893ffb9db223e5707d515a0028f31bf0283ff57056e7301a81db45cfcc6b",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "b8dae31002eaed78bd55cca03d3ec18177a83b2a687a6b93772ff7a74cfa103b",
+   "libsodiumValid": true,
+   "valid": true,
+   "kTimesElement": "52b1165956ed1798dd3c4f5fefd5a44a25edc38eaa4240dae01bef7042837373"
+  },
+  {
+   "element": "b8dae31002eaed78bd55cca03f3ec18177a83b2a687a6b93772ff7a74cfa103b",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "9222be344566d47fbbf457dcff90dc787aaa700f6c2780b6f6d79fae2663694e",
+   "libsodiumValid": true,
+   "valid": true,
+   "kTimesElement": "0610353c9bf21caec55e4b9ea9335e7762d3a4e130ea43334524507e89db0b15"
+  },
+  {
+   "element": "9222be344566d47fbbf457dcff90dc787aaa700f6c2780b6e6d79fae2663694e",
+   "libsodiumValid": true,
+   "valid": true,
+   "kTimesElement": "c00ce08f913af55e3a1e81cca3e9fba9bb32cd6d2cfa494e5c30d5c150bf5041"
+  },
+  {
+   "element": "5cf6f45fbc579082753aa1a070eb1a9dcb7cf8e76e9e7073cb55c6070c132a03",
+   "libsodiumValid": true,
+   "valid": true,
+   "kTimesElement": "8cc872bca7c23e6b4d06c874155fda603f464bd1afd9313b1195ef9d14e0736f"
+  },
+  {
+   "element": "5cf6f45fbc579082753aa1a070eb1a99cb7cf8e76e9e7073cb55c6070c132a03",
+   "libsodiumValid": true,
+   "valid": true,
+   "kTimesElement": "485e63973b1fb6e4fcf322cb5166511ae6dd937c4f4d16af9784a3b5c221bd3a"
+  },
+  {
+   "element": "9091a523686d5e25d06aebf1fb778a0438d5d12171726148029508eb49a1b83c",
+   "libsodiumValid": true,
+   "valid": true,
+   "kTimesElement": "06d5ad57c668f367206b9a3c82969d5942ca16e035463aa93ebea2909d9d113d"
+  },
+  {
+   "element": "9091a523686d5e25d06aebf1fb778a0438d5d12071726148029508eb49a1b83c",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "c4c8bb37d39a0a84a0867a22376aff399e9673a08e6359e7ca028e35f94e577e",
+   "libsodiumValid": true,
+   "valid": true,
+   "kTimesElement": "e8b679d1aba3ef8f839a842b4216fc97a3920965b81cb5921371b3602b932c32"
+  },
+  {
+   "element": "c4c8bb37d39a0a85a0867a22376aff399e9673a08e6359e7ca028e35f94e577e",
+   "libsodiumValid": true,
+   "valid": true,
+   "kTimesElement": "4e1a764afe30177c145f7e77f0c74e67e4f5d03c9bd99ca0a656e31a13324a78"
+  },
+  {
+   "element": "48c2b900aad5ce9269ba357a54ed18e2440774fb8872ba9d435a6330f66c292b",
+   "libsodiumValid": true,
+   "valid": true,
+   "kTimesElement": "2a1257fae122be41cfe7a8e5ea06a8f749db3f25247230dda79b2037046b3d66"
+  },
+  {
+   "element": "48c2b900aad5ce9269ba3d7a54ed18e2440774fb8872ba9d435a6330f66c292b",
+   "libsodiumValid": true,
+   "valid": true,
+   "kTimesElement": "eebbe63035706b87414f506ad77bd2dffe626e05b1444ea9edce3986f027857d"
+  },
+  {
+   "element": "c0700468637c513436312a95879b31e3b2180e951ec86bc482417d148801c37b",
+   "libsodiumValid": true,
+   "valid": true,
+   "kTimesElement": "4c3f2c070d1f47bc70a84d8689c03b4fe40306a446f4a65bbd63fbfa848cae11"
+  },
+  {
+   "element": "c0700468637c513436312a95879b31e3b2180e951ec86bc482417d148809c37b",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "62e31576c08631fb9448bee89dee3c10af61359f10579bb50785d7284a104976",
+   "libsodiumValid": true,
+   "valid": true,
+   "kTimesElement": "64971755ddcc4eb472f59aff299469c0d4dec966add5473f81846bca99019177"
+  },
+  {
+   "element": "62e31576c08631fb9448bee89dee3c10af61359f10579bb50785d72848104976",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "604b197ef1dcedffcba9ab3aceadd30f67d3a56d418c9ff21f1b0e249143da70",
+   "libsodiumValid": true,
+   "valid": true,
+   "kTimesElement": "1cf88a3d10d71959226fbc8bfd5f889aca85ef016173d76cad1f01b88b3ae662"
+  },
+  {
+   "element": "604b197ef1dcedffcba9ab3aceadd70f67d3a56d418c9ff21f1b0e249143da70",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "28353c47a314d2def61e39959009c57e648e144b6ef8651ad5432702387fb26c",
+   "libsodiumValid": true,
+   "valid": true,
+   "kTimesElement": "9ca47a0e76967561ebceaa6f3fb88843e9ee2105e1cc0756285feaddc02f2d69"
+  },
+  {
+   "element": "28353c47a314d2def61e39959009c5fe648e144b6ef8651ad5432702387fb26c",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "565900099b3a3155fbe1c9178670c511631eba4e7c4f7c63d592769bc92e0375",
+   "libsodiumValid": true,
+   "valid": true,
+   "kTimesElement": "805779b1ed7e16d5d6b9e0345f9976cd77e0a5a9ab000fadc53321908fb79e3e"
+  },
+  {
+   "element": "565900099b3a3155fbe1c9178670c591631eba4e7c4f7c63d592769bc92e0375",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "f49d1b5564e3ffea2f18ec25021227a7ed90a5787d2c87d47f16055a109a560c",
+   "libsodiumValid": true,
+   "valid": true,
+   "kTimesElement": "da5a0ab9d2d0c3f72823378124a5e9896fe6ddf1c425dd9be4ba1a943e4ab549"
+  },
+  {
+   "element": "f49d1b5544e3ffea2f18ec25021227a7ed90a5787d2c87d47f16055a109a560c",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "ac7cc106b7e7a5e87162c8c7c988bc767cf993dcf67869a2703008d2ad4bb063",
+   "libsodiumValid": true,
+   "valid": true,
+   "kTimesElement": "625bf1f7a24c533b0ea69f7b680fc4c9631edd778ad06912c650933cfd180d00"
+  },
+  {
+   "element": "ac7cc106b7e7a5e87162c8c7c988bc767cf993dcf67869a2303008d2ad4bb063",
+   "libsodiumValid": true,
+   "valid": true,
+   "kTimesElement": "5428065adc33f07b310eb3e29baf9773bf01b76f591206712f7ff7ecb3edd760"
+  },
+  {
+   "element": "dacab82a1018f18e96d577804e5db0bcb3a4787edd44a9d86f63145c9b674d4b",
+   "libsodiumValid": true,
+   "valid": true,
+   "kTimesElement": "908d88e2cb7455075ee4c3620b97633b232da8d5abe810b769ce5ad4c6affd63"
+  },
+  {
+   "element": "dacab82a1018f18e96d577804e5cb0bcb3a4787edd44a9d86f63145c9b674d4b",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "36f0da7d5772800cc962af662231a5c337e6cac95fd5cf8451ac82684767175b",
+   "libsodiumValid": true,
+   "valid": true,
+   "kTimesElement": "921c4df7b9eb13746f0d5d4161a6d591551f5ab22583f4ebd4999a0d55887a3f"
+  },
+  {
+   "element": "36b0da7d5772800cc962af662231a5c337e6cac95fd5cf8451ac82684767175b",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "ea23865e4f135773fdc2043ab14b12789f8fb5d4dc685fced0337bf79b05746e",
+   "libsodiumValid": true,
+   "valid": true,
+   "kTimesElement": "50393b90b97c32598bcd51fb2196023d5963dcbe69ad4c527029c1fd7fb6237c"
+  },
+  {
+   "element": "ea23865e4f935773fdc2043ab14b12789f8fb5d4dc685fced0337bf79b05746e",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "2ab9c654cb78ac8b5f8688d5f124076e8048a279d4ceba2af4d6aac9b94f684a",
+   "libsodiumValid": true,
+   "valid": true,
+   "kTimesElement": "e2fdd02cd33c169d6cd07cc472df2fbd2d0a19d9593d6432bace7475e05b4221"
+  },
+  {
+   "element": "2ab9c654cb78ac8b5f8688d5f124076e8048a279d4ceba2af4d6aac1b94f684a",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "807a4e96b48dd7bc602252cb186c94091eb230ec6a216be9ab1bacea6a56dd42",
+   "libsodiumValid": true,
+   "valid": true,
+   "kTimesElement": "36de88ae273704b7e3158f9a494c07d709452a21a2901de4805ea3aed4ded447"
+  },
+  {
+   "element": "817a4e96b48dd7bc602252cb186c94091eb230ec6a216be9ab1bacea6a56dd42",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "362d69764f94dd1c0f94a43b53226efe46105b5bc4577b3b2bb8c9d38ef3010d",
+   "libsodiumValid": true,
+   "valid": true,
+   "kTimesElement": "e8cc6b7ca787b30f137b6d431bf59606e5796bc10209d855f7cdd8354cb42438"
+  },
+  {
+   "element": "362d69764f9cdd1c0f94a43b53226efe46105b5bc4577b3b2bb8c9d38ef3010d",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "2c210f2eb19cd4f037f2b6de813aa2d7c852bd8cb0925a74e9de55ee9e968875",
+   "libsodiumValid": true,
+   "valid": true,
+   "kTimesElement": "400819ff75365536962703a9230b17b7914f33a81f2441c320fbb3afb82fd73e"
+  },
+  {
+   "element": "2c210f2eb19cd4f037f2b6de803aa2d7c852bd8cb0925a74e9de55ee9e968875",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "36333dc8508ab4d230999ae8022658dafb098f5429a10046e6ae40252400b712",
+   "libsodiumValid": true,
+   "valid": true,
+   "kTimesElement": "7826c033d202408ac887b92e74ac4fb0926867762cebbc3e92adc469cc168f5b"
+  },
+  {
+   "element": "36333dc8508ab4d270999ae8022658dafb098f5429a10046e6ae40252400b712",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "8e9fa5276b6d1973f250212716e4c79c1ca2640a004190a3ccf138e82b5e540a",
+   "libsodiumValid": true,
+   "valid": true,
+   "kTimesElement": "36f92b345a1c8676aa15b807af189181f44221690701cabb543eb8c0d0e9333a"
+  },
+  {
+   "element": "8e9fa5276b6d1973f25021271664c79c1ca2640a004190a3ccf138e82b5e540a",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "d8c6cb7a8ae3e9c4b5888ed97dce0dc17fe56fd867db9cc8756b3ce9f7df383d",
+   "libsodiumValid": true,
+   "valid": true,
+   "kTimesElement": "c63d0debeafb66f057237c84bd2974509bd258031c11104ccf69f8d02a5e4948"
+  },
+  {
+   "element": "d8c6cb7a8ae3e9c4b5888ed97dce0dc17fe56fd867fb9cc8756b3ce9f7df383d",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "4ecfe609879d8d61fe37f5be9d9cb53e9e37337ddcef57dee55d7c5b0cbe3471",
+   "libsodiumValid": true,
+   "valid": true,
+   "kTimesElement": "28ea686d53100fe152c3c766d7150a0e567927fb26d828b6d23af23a94214218"
+  },
+  {
+   "element": "4ecfe609879d8d61fe37f5be9d9cb53e9e37337ddeef57dee55d7c5b0cbe3471",
+   "libsodiumValid": true,
+   "valid": true,
+   "kTimesElement": "c6b40393ae611dfabe85259d2d5796714da913d52617aa51e28720830c6c1d1b"
+  },
+  {
+   "element": "6ead1532f37debba4df68e4943fb20af6c020538c31d3ff06a5c1f2a404c5d1b",
+   "libsodiumValid": true,
+   "valid": true,
+   "kTimesElement": "20b20ac7899452163889291b51923d39f71f5a1000d2c6b0e2d754d1d79c2b08"
+  },
+  {
+   "element": "6ead1532f37debba4df68e4953fb20af6c020538c31d3ff06a5c1f2a404c5d1b",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "f428b8c751bec024b23bd6a663a544f6c98529eac760b6c74fc3f8219d70442f",
+   "libsodiumValid": true,
+   "valid": true,
+   "kTimesElement": "7615f6297f5b9da955fde591b73be49195ba61ce686ba6f748747f9f412a027a"
+  },
+  {
+   "element": "f428b8c751bec024b23bd6a663a544f6c98521eac760b6c74fc3f8219d70442f",
+   "libsodiumValid": true,
+   "valid": true,
+   "kTimesElement": "468d0db5fa20612cbc85eb49dae37705e33fc2d8546d752fd8f34d1e91495f5f"
+  },
+  {
+   "element": "06a2a245f79e8bdf77756bf9343d9c97ed57344687f9980e36838a307db3a619",
+   "libsodiumValid": true,
+   "valid": true,
+   "kTimesElement": "309b4b63f6e67dbd70c6c944c2efdea3b68302f04b5e9c17a4cea7e03ab7ac1a"
+  },
+  {
+   "element": "06a2a245f79e8bdf77756bf9303d9c97ed57344687f9980e36838a307db3a619",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "564c7cb7c64f25f0e9f7ad7b9939d20d72266c837ea7e28943da753143652942",
+   "libsodiumValid": true,
+   "valid": true,
+   "kTimesElement": "2e790b43835949b845668a17b7c2554e534a9eb24a289fa237ac268005741c33"
+  },
+  {
+   "element": "564c7cb7c64f25f0e9f7ad7b9939d20d72266c837ea7e29943da753143652942",
+   "libsodiumValid": true,
+   "valid": true,
+   "kTimesElement": "0c120291042657c355c3a42ef35de113197315141a21ceb3def0c59a6f8e8223"
+  },
+  {
+   "element": "02cbac21c48e072bdb4c19b5902b0d490ba3488c574208aeb50806c60ec8902e",
+   "libsodiumValid": true,
+   "valid": true,
+   "kTimesElement": "7c6c305d3e47c3720d0bbcd36b3bfba740e52929e75e4782b16ea6c4e4a5d921"
+  },
+  {
+   "element": "02cbac21c48e072bdb4c19b5902b0d490ba3488c774208aeb50806c60ec8902e",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "3437af4a5835709951ea25c7619a06f767a29697b08b70fd4f315a1683c60d22",
+   "libsodiumValid": true,
+   "valid": true,
+   "kTimesElement": "8c421bf98e2fca7a962c5b9dca54c2944fbfcdc39819cea878e2ab7772e2260e"
+  },
+  {
+   "element": "3437af4a5835709955ea25c7619a06f767a29697b08b70fd4f315a1683c60d22",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "ec1a1a980e58576c609d7db90c04d744eca936e99920b697178a6bfcdb5e5609",
+   "libsodiumValid": true,
+   "valid": true,
+   "kTimesElement": "c8aa9a9bd902fe4d7cae40f2a68b7a6b730ad767085a4f55cf24268c53ca4a14"
+  },
+  {
+   "element": "ec1a1a980e58576c609d7db90c04d744e4a936e99920b697178a6bfcdb5e5609",
+   "libsodiumValid": true,
+   "valid": true,
+   "kTimesElement": "3a3ed61355154400f7a46fc69a5dec70c8d9dd24aa73f587ccf81a1a9be6fd77"
+  },
+  {
+   "element": "3a1f699dbe7c2f3e6f1c2a52ca371143daf5cb621561accb301a09083ff2e31b",
+   "libsodiumValid": true,
+   "valid": true,
+   "kTimesElement": "f846d50d44525c721cd61c380f1419794c7f61a70666c7dbaeb772d219ec570c"
+  },
+  {
+   "element": "3a5f699dbe7c2f3e6f1c2a52ca371143daf5cb621561accb301a09083ff2e31b",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "802910a1bac57a8e1e58256976caac9363cd418a1301ed9628807d7f93cc065b",
+   "libsodiumValid": true,
+   "valid": true,
+   "kTimesElement": "e6c250b36ea665bc2d9f84ee1354aad38661cdaa7967e0bb034262fdf9935261"
+  },
+  {
+   "element": "802910a1bac57a8e1e58256976caacd363cd418a1301ed9628807d7f93cc065b",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "523b703596bf4777c9018efe72668f828474ad6809dd648adc3c7b5cd3f2692b",
+   "libsodiumValid": true,
+   "valid": true,
+   "kTimesElement": "ba786d4b5a12a997f327c9587934ee1d421b68ec7b3e25ef6a83c1b615b83749"
+  },
+  {
+   "element": "523b703596bf4777c9018efe72668f828474ad6809dd648adc3c7b5cd3f269ab",
+   "libsodiumValid": true,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "0cc48321a9f1cc4956b43500d42ce0e781580b02d86716b0b9b0bffa99aab34a",
+   "libsodiumValid": true,
+   "valid": true,
+   "kTimesElement": "4ac3d39f33b394d803dcb851288ee3e8f9a7ac3686ec60f43d47b0946db89a6a"
+  },
+  {
+   "element": "0cc48320a9f1cc4956b43500d42ce0e781580b02d86716b0b9b0bffa99aab34a",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "2ce8511dd7fd9d578888147e252001aeae5d026ac8c76efb3694f0349d324629",
+   "libsodiumValid": true,
+   "valid": true,
+   "kTimesElement": "b61ddacd2fc9b4c1f3cb8c981bc17cdac234c0308eda0a383d48f9c900560a3c"
+  },
+  {
+   "element": "24e8511dd7fd9d578888147e252001aeae5d026ac8c76efb3694f0349d324629",
+   "libsodiumValid": true,
+   "valid": true,
+   "kTimesElement": "e011a8f7aecb15e514414f1d12d0ab4c4992a6a43f18f9dd83fd98f233e61538"
+  },
+  {
+   "element": "94cb104e323e29619234e5cb27cbc3120603503943849fd153c073fc345e2802",
+   "libsodiumValid": true,
+   "valid": true,
+   "kTimesElement": "5c486241bdfc5843756fa264ab6885eee0de5f84de34135bba905404178ef45d"
+  },
+  {
+   "element": "94cb104e123e29619234e5cb27cbc3120603503943849fd153c073fc345e2802",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "fc05b182932dbaeff5cbfab9d36f08529b5900a612a1444c2a84271950ef580d",
+   "libsodiumValid": true,
+   "valid": true,
+   "kTimesElement": "ea4f21562325661b0c2eb1f8d8f3cf1e78da8241a76dd235bbb0e3da450ac037"
+  },
+  {
+   "element": "fc05b182932dbaeff5cbfab9d36f08529f5900a612a1444c2a84271950ef580d",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "54c9671626d1cf07f5c85e12d17237404d707fefd2c296a2db54a128fc59c65a",
+   "libsodiumValid": true,
+   "valid": true,
+   "kTimesElement": "78f26223893f47b6c18eff7e4ce5ef5834ad43b1d009e238004f8ad29ff63f3f"
+  },
+  {
+   "element": "54c9671626d1cf07f5c85e12d17237404d707fefd2c296e2db54a128fc59c65a",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "92eb598395b4374d4950437c3d7bc6a9f777e922fb8acb89d08fd3eb98b9166a",
+   "libsodiumValid": true,
+   "valid": true,
+   "kTimesElement": "587bd1bb26c028fe7c1cd2bcfb8f5e812745ece071a75abd78748c3646cec550"
+  },
+  {
+   "element": "92eb598395b4374d4950437c3d7bc6a9f777e922fbcacb89d08fd3eb98b9166a",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "bc815d239a9dca45679beea8b71a3b7f1adcc0407121f538e09081714b68203b",
+   "libsodiumValid": true,
+   "valid": true,
+   "kTimesElement": "4621cd9fd4371ecf5d341aeb100e560e3a9855b5d6469f068df0871c1842a125"
+  },
+  {
+   "element": "bc815d239a9dca45679beea8b71a3b7f1adcc0407121f538e09081716b68203b",
+   "libsodiumValid": true,
+   "valid": true,
+   "kTimesElement": "32a7bd1912d8a1633914c2e57c2853d71bc401a50ed75be401469a22fe3b9a58"
+  },
+  {
+   "element": "3030f8e2580dd4a5789f2711a6e4244d67006016bd469fee29f265b2d687ba22",
+   "libsodiumValid": true,
+   "valid": true,
+   "kTimesElement": "96b5f49c1847047b46bf5b76e841a2945d0c9fa97c1a44fcd2172d921a95767b"
+  },
+  {
+   "element": "3030f8e25805d4a5789f2711a6e4244d67006016bd469fee29f265b2d687ba22",
+   "libsodiumValid": true,
+   "valid": true,
+   "kTimesElement": "6ad579fd401ec16c20841281d43f77cc812792de44b465c9c936ecb5bf81732a"
+  },
+  {
+   "element": "766d444a8554d3e944d86dfcb2bdd9d1ef0175f0f458b94db42e8dabe888b114",
+   "libsodiumValid": true,
+   "valid": true,
+   "kTimesElement": "eae4b12072ed320aea3f70b8234491ae5414cbcc955bd8af75a1c34faf589666"
+  },
+  {
+   "element": "766d444a8554d3e944d86dfcb2bd99d1ef0175f0f458b94db42e8dabe888b114",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "4a88bad3f90ecaa22e0e0e5886936b800b533926f3b061aa4c028d97692dc41b",
+   "libsodiumValid": true,
+   "valid": true,
+   "kTimesElement": "528a383fc807c84a6894b52cedff541d1d7f1d69b8d54dd0d0e37d0181221843"
+  },
+  {
+   "element": "4a88bad3f90ecaa22e0e0e5886936b800b533926f3b0618a4c028d97692dc41b",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "ae361fbd60427025f46f844ea18ce5b70a687c34fb09d1da9b6fdb4ced16ec4e",
+   "libsodiumValid": true,
+   "valid": true,
+   "kTimesElement": "dcd9dea7d8b33cbd3fec432aaeb3b8de012006d15943be390dc82ce453f3a236"
+  },
+  {
+   "element": "ae361fbd60427025f46f844ee18ce5b70a687c34fb09d1da9b6fdb4ced16ec4e",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "f2b4cbee025354df197763cab320c69b300287fa46cb55fd727ef784078ce729",
+   "libsodiumValid": true,
+   "valid": true,
+   "kTimesElement": "d484ce36b2adc44ef6acd2d76c9e0aac4ba9f36e8e1290a16a62a78f0fa1ad21"
+  },
+  {
+   "element": "f2b4cbee025354df197763cab320c69b300287fa46cb54fd727ef784078ce729",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "103a76810c53585104048ac93ebab0f13377c838aaf5b0f89648da5f45752e38",
+   "libsodiumValid": true,
+   "valid": true,
+   "kTimesElement": "dc55e4e924a050384a51379c9e56845e231097e9813fa3b8d57187517ff84e67"
+  },
+  {
+   "element": "103a76810c53585104048ac93ebab0f13377c838aaf5b0f89648da1f45752e38",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "7a32a1db3c2839840b21251015e2e71cf7341c2fda1f043c88ead07205e0313a",
+   "libsodiumValid": true,
+   "valid": true,
+   "kTimesElement": "26fad8a8fa2ee9fe17e8012efb4938e29ea8f94698f2e9489121d8611c0a2f3b"
+  },
+  {
+   "element": "7a32a1db3c2839840b21051015e2e71cf7341c2fda1f043c88ead07205e0313a",
+   "libsodiumValid": true,
+   "valid": true,
+   "kTimesElement": "048102751dcd3faff1331b48c167cf78a4201cfedbc113847247831ddde5b90c"
+  },
+  {
+   "element": "6cbd328e52a4971546b302e6fbed896dcdb04b701099fd2ec5d818bde28cbb79",
+   "libsodiumValid": true,
+   "valid": true,
+   "kTimesElement": "b2e37479c4e9b38a4a6514a76a0d842f9b6e1c8f6c4f776043320c31722d1a34"
+  },
+  {
+   "element": "6cbd328e52a4971546b302e6fbed896dcdb04b701099fd2ec5d818bde28cbb69",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "3cc0e6de99fdc6d242b3e85ad99824bf682b40064299a1cd8cca111043b9bc3b",
+   "libsodiumValid": true,
+   "valid": true,
+   "kTimesElement": "c4733a18780f7ec319dc41290c4d61c456cf7ceadb5c804fdd1253e72775432e"
+  },
+  {
+   "element": "3cc0e6de99f9c6d242b3e85ad99824bf682b40064299a1cd8cca111043b9bc3b",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "26ab43aedd36afe9d0ff1c513fd3374785863d19a5edb33fd4ff1e4aefeb1e23",
+   "libsodiumValid": true,
+   "valid": true,
+   "kTimesElement": "c2fce9182825a58bc3c32d168085e489d62373505d5df6f5c5658f62a230de3b"
+  },
+  {
+   "element": "26ab43aedd36afe9d0ff1c513fd3374785863d19a5edb33fd4ff1e4aefeb1c23",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "d65da6823513507a2cdb2f2113534afe137a81f6fa790522f24dc5aa370d1827",
+   "libsodiumValid": true,
+   "valid": true,
+   "kTimesElement": "36c6b93193ff219283227341f46cca238bb307cef53c23aada3baaa92b775818"
+  },
+  {
+   "element": "d65da6823513507a2cdb2f2013534afe137a81f6fa790522f24dc5aa370d1827",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "529a1be6c2b353b830d2a50739a0fc5ee33bbbb22d825791c0be9774b95f9a62",
+   "libsodiumValid": true,
+   "valid": true,
+   "kTimesElement": "4810781148538010d18e07f1bbc4cea8b70a4b566c591985e551fd14d7c7884e"
+  },
+  {
+   "element": "569a1be6c2b353b830d2a50739a0fc5ee33bbbb22d825791c0be9774b95f9a62",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "180ae5aaa6c4a247ce9112cbdbd7735e6ff1a2b0b6c11c8bf3ac868b547e0a28",
+   "libsodiumValid": true,
+   "valid": true,
+   "kTimesElement": "c8f3c4fd7535349ca0383021f236d0f04694fc04ade2274870a663efb23d9c06"
+  },
+  {
+   "element": "180ae5aaa6c4a247ce9112cbdbd7735e6ff1a2b0b6c11c8bf3ac8e8b547e0a28",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "745781facc74ffed8c074abd819628c1cd987c5adc154332322283bfbaa3d113",
+   "libsodiumValid": true,
+   "valid": true,
+   "kTimesElement": "0c697fd03a0ff76a503237c9721688d16b002e9f6d44302227b27d0a93bb6966"
+  },
+  {
+   "element": "745781facc74ffed8c074abd819628c1cd987c5adc154332322283bfbaa2d113",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "06b171b4bab04f5ae88b69e658822932551f079b7705343a86563da2b4f8b720",
+   "libsodiumValid": true,
+   "valid": true,
+   "kTimesElement": "c275cd931727b7680c2747e3e9471e82fbf5badf14bbc2ebf539b1a0535d966e"
+  },
+  {
+   "element": "06b171b4bab04f5ae88b69e458822932551f079b7705343a86563da2b4f8b720",
+   "libsodiumValid": true,
+   "valid": true,
+   "kTimesElement": "882e27d9bfb938a3b5af337754995c77cd90ac3429eac9fd719a035ad1372a1b"
+  },
+  {
+   "element": "78088b495c14074d70f44252289b25031d6645ea5c73bf46ec1c523164f3a06f",
+   "libsodiumValid": true,
+   "valid": true,
+   "kTimesElement": "f2be4fd3dfc709285af0eba0929c01f49facda2f5ae13cfd3de7fe83de8c8b1b"
+  },
+  {
+   "element": "78088b495c14074d70f44256289b25031d6645ea5c73bf46ec1c523164f3a06f",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "8ae462c27a86dc7bd11a00ca09d702cdf40043efc8edcb440431c916d26f943c",
+   "libsodiumValid": true,
+   "valid": true,
+   "kTimesElement": "78ba20b0c270cda2406dda39df6bc63c393f29fd945b96f0a36c700ac22d0212"
+  },
+  {
+   "element": "8ae462c27a86dc7bd11a00cb09d702cdf40043efc8edcb440431c916d26f943c",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "40210d9fb8102002fb174ec382dddd13a2b37cf441ffd16bbfb964b2e6ae2c21",
+   "libsodiumValid": true,
+   "valid": true,
+   "kTimesElement": "f8a7d6de997b9aee6527fc33ca661afb2de23570f3fe19a7fb15f36e878c7035"
+  },
+  {
+   "element": "40210d9fb8102002fb174ec382dddd13a2b3fcf441ffd16bbfb964b2e6ae2c21",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "381aaf9b2cb27c73b6fef25bc9b0e6027c96bba335c6f869e6cc2ead2056986c",
+   "libsodiumValid": true,
+   "valid": true,
+   "kTimesElement": "5ab18e32d831d13a54c79f4135be2dc8681dcf9b4ecda38b71d40a4931b67f42"
+  },
+  {
+   "element": "381aaf9b2cb27c73b6fef25bc9b0e6027c96bba335c6f869e6cc2ead2016986c",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "1c8c4f4bbf575daa9ae57d8f0511f942afda3ea8e44a593b4795c6418218281a",
+   "libsodiumValid": true,
+   "valid": true,
+   "kTimesElement": "26d6259d5450c6088da4f69b7486f480ee47541777ede3d5671da9a30a361a49"
+  },
+  {
+   "element": "1c8c4f4bbf575daa9ae57d8f0511f942af9a3ea8e44a593b4795c6418218281a",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "4c03d6115100f2f943834d5063c1fa77122225cb5c4ed45214e2639bbe48bd32",
+   "libsodiumValid": true,
+   "valid": true,
+   "kTimesElement": "2888d578ba624b2516be0935c3e8a3dee24c723ef67a0322c47fbbcea6fba15d"
+  },
+  {
+   "element": "4c03d6115100f2f943834d4063c1fa77122225cb5c4ed45214e2639bbe48bd32",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "76283ad6d5ac8d6245bf085506e24b714bfba365a1ff3910ce1bee63d5934d26",
+   "libsodiumValid": true,
+   "valid": true,
+   "kTimesElement": "f44caaa2c987bf88f7d653e111282407f0b8bcb0fd07c0c11befd99406356c50"
+  },
+  {
+   "element": "76283aded5ac8d6245bf085506e24b714bfba365a1ff3910ce1bee63d5934d26",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "800bc3d5443b0f1487265551e426f619d9a7c741c9bcc0bc673ff9f289c4884b",
+   "libsodiumValid": true,
+   "valid": true,
+   "kTimesElement": "1604cbb53de175664fe93e06dad7297f4c93d4e3bcb5cf47ca097e6f1537b545"
+  },
+  {
+   "element": "800bc3d5443b8f1487265551e426f619d9a7c741c9bcc0bc673ff9f289c4884b",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "403fc8e6327692a6006033b84b8e3a705261e2a5cdb20454ef7330b9f901ea2d",
+   "libsodiumValid": true,
+   "valid": true,
+   "kTimesElement": "7ebaf67f1a4d5674afba6325e9002e434f93b1c5fa7b13bb2d1860e780550331"
+  },
+  {
+   "element": "403fc8e632769226006033b84b8e3a705261e2a5cdb20454ef7330b9f901ea2d",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "94a41ef4d250b14282d5c71b8c64b53e87d19efb6aeb59ee2a89278db454b86f",
+   "libsodiumValid": true,
+   "valid": true,
+   "kTimesElement": "c2658ea7209052664855f400467fa31153575e140d827093292523ff0f14c549"
+  },
+  {
+   "element": "94a41ef4d250b14282d5c71b8c64b13e87d19efb6aeb59ee2a89278db454b86f",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "e4b80a5e576aba57fad5631d9404ecf9cbd0e5d18e12b373cd4071ceadc15862",
+   "libsodiumValid": true,
+   "valid": true,
+   "kTimesElement": "2ac700a7c70245031b27579ef1db5195c55aec4ad701c512a416abc52f63e57c"
+  },
+  {
+   "element": "e4b80a5e576aba57fad5631d9404ecf9cbd0e5d18e12b373cd4071ceadc14862",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "c685368b5a27c86411b3fb8ff7ada03ed6d4d95e09a8449b89df0632403d952b",
+   "libsodiumValid": true,
+   "valid": true,
+   "kTimesElement": "88fcb2cdd2bca55dea3ddb8bae362f080bbee888c30da01c723cc00871223d24"
+  },
+  {
+   "element": "c685368b5a27c86411b3fb8ff5ada03ed6d4d95e09a8449b89df0632403d952b",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "d8f4cad8fafe91e2caeb63078e545207247bc2d93fce985f2249136b9638c860",
+   "libsodiumValid": true,
+   "valid": true,
+   "kTimesElement": "12be38dfedc8c3a1af70be8fe773cf15f89d1a408eb6a47b943c794b2d4f9f39"
+  },
+  {
+   "element": "d8f4cad8fafe91e2caeb63078e545207247bc2d93dce985f2249136b9638c860",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "f846415959cc0b308a9afb5a911285026a1ffe269479a7c82cf7cbe65a582b0a",
+   "libsodiumValid": true,
+   "valid": true,
+   "kTimesElement": "1200662d0ec1c62a9435350ade490f63767980cb287c76b7603fa41e956c552b"
+  },
+  {
+   "element": "f846415959cc0b308a9afb5a911285026a1ffe269479a7c82cf7dbe65a582b0a",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "12a14dfd300c269c33c601816d0cc5167c83a870ee4fadae56f3a68eaff7a10e",
+   "libsodiumValid": true,
+   "valid": true,
+   "kTimesElement": "fa918d13e2286edd64ce6beb92a903a96a410cc4dc6b626e926aeb5511e4c44b"
+  },
+  {
+   "element": "12a14dfd300c269c33c601816d0cc5167c83a870ee4badae56f3a68eaff7a10e",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "7e1647701c6f33b502a4d913ebc57d452cbc680f1684861ed5d1862f7926820b",
+   "libsodiumValid": true,
+   "valid": true,
+   "kTimesElement": "fa4d6439bc1e6cddf0f7829449665dd30903e89350aeac6e9b906c8175d96d61"
+  },
+  {
+   "element": "7e1647701c6f33b502a49913ebc57d452cbc680f1684861ed5d1862f7926820b",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "7292a8aef8f98f2638341de8c63e9470d24822b15844e13af11401eabb1e2d70",
+   "libsodiumValid": true,
+   "valid": true,
+   "kTimesElement": "74685e2fee2946bef9b692ccf15bca8cac083a85117d44999a890c3f8e052c64"
+  },
+  {
+   "element": "7292a8aef8f98e2638341de8c63e9470d24822b15844e13af11401eabb1e2d70",
+   "libsodiumValid": true,
+   "valid": true,
+   "kTimesElement": "9affd8647eb6bab69c5fe5430edd3fabcc60db794d8f325dfc50688147ae261c"
+  },
+  {
+   "element": "b693a22d74aac3bce6106a05af0559e92e61125ca3dddaa31370d8f5c4486267",
+   "libsodiumValid": true,
+   "valid": true,
+   "kTimesElement": "e822298354642592f000b2d21d4c18f6d0103eae5c4ff01b33cde2c8c7892032"
+  },
+  {
+   "element": "b693a22d74aac3bce6106a05af0559e92e61125ca3dddaa31370d8f5c4496267",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "a84ca444adf1c5309041dd05a1eb71f49db909aa0b6d4dcd207d6c5bb032e77f",
+   "libsodiumValid": true,
+   "valid": true,
+   "kTimesElement": "f455ba3d6b5f1e2fd8d4e260ce932dc4a5640f0e074b8d2860743b4328d9271a"
+  },
+  {
+   "element": "a84ca444adf1c5309041dd05a1eb71f49db909aa0b6d4dcd207c6c5bb032e77f",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "f84271647d9a809129399898005c6862f26efcd2957172169784439c45dbb019",
+   "libsodiumValid": true,
+   "valid": true,
+   "kTimesElement": "8e4b867471dfc17f779540eb817e5122b67e6e3aab2e36f7900b509416a0a35e"
+  },
+  {
+   "element": "f84271647d9ac09129399898005c6862f26efcd2957172169784439c45dbb019",
+   "libsodiumValid": true,
+   "valid": true,
+   "kTimesElement": "d224de989ae0b89115c4f3a9cb8db82b133038560a3c2ef3063360021d199f4f"
+  },
+  {
+   "element": "4877f403ada97ae09eddeb1ed1f6a8da9e5cf62fc9d01ee0b1b0df2abfeb9c73",
+   "libsodiumValid": true,
+   "valid": true,
+   "kTimesElement": "a4b85994713dd307759693b433838f5355d6e79bce1f4b05214051af045f7222"
+  },
+  {
+   "element": "4877f403ada97ae09eddeb1ed1f6a8da9e5cf62fc9501ee0b1b0df2abfeb9c73",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "a251db784d96f44a0322f647e15c76afbd9b97c58361f7576c131dea0413491f",
+   "libsodiumValid": true,
+   "valid": true,
+   "kTimesElement": "4693868f6a3abac905c082ed1893ff00f0d12be0f70df08f41b8db45cbb45f4a"
+  },
+  {
+   "element": "a251db784d96f44b0322f647e15c76afbd9b97c58361f7576c131dea0413491f",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "7a0a1ac72e8dac7ac8ec29c23d935cdbc27fda565596e506a020e686f1834a73",
+   "libsodiumValid": true,
+   "valid": true,
+   "kTimesElement": "72d77282624d78d89c5da43e766be62042efebecf55bf78f7a41fecf7d49ab6e"
+  },
+  {
+   "element": "7a0a1ac72e8dac7ac8ec29c23d935cdb427fda565596e506a020e686f1834a73",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "7e065feae190ce50905532a6bf62424ab4e6e8d9ffe9f767451503ce41cf740e",
+   "libsodiumValid": true,
+   "valid": true,
+   "kTimesElement": "08fd99b1cea3310c61400ebb7b4f6c2442dcd2055e15169045b9e97c4461d077"
+  },
+  {
+   "element": "7e065feae190ce50b05532a6bf62424ab4e6e8d9ffe9f767451503ce41cf740e",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "749a6b8026d27c527f99256afbf5792889393f542cccee9d0066d56297dac77f",
+   "libsodiumValid": true,
+   "valid": true,
+   "kTimesElement": "3cb5582b765f4c8e5e369bd8dda16ce201ddd1e8b2168a1b0fd4734f2143920a"
+  },
+  {
+   "element": "749a6b8026d27c527f99256afbf5792889393f542cccee9d0066d56297dae77f",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "2a1d46db2c35aa6129edfabad55ee56bdc772891242cf67196e26575f757ef29",
+   "libsodiumValid": true,
+   "valid": true,
+   "kTimesElement": "540ad70005f0a750705cf5b8316231b9a69a5917a86f76d0be224ab5f7869b0a"
+  },
+  {
+   "element": "2a1d46db2c35aa6129edfabad55ee56bdc772891242cf67196e26535f757ef29",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "f2c72b831bae66eca0ef9c3f302f19b9cae1adc8e763d844d2cd90fc1d9e1212",
+   "libsodiumValid": true,
+   "valid": true,
+   "kTimesElement": "b64fdfd6dcb229f7be3169957637738866e5644966c35465b6ba0a07b7330253"
+  },
+  {
+   "element": "f2c72b831bae66eca0ef9c3f302f19b9cae1adc8e763d844d24d90fc1d9e1212",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "0ab2c6c3e37e93c4ed0ad73274cac2b58e229995aa96a8ad5db207b50de8512a",
+   "libsodiumValid": true,
+   "valid": true,
+   "kTimesElement": "fe81e537e5cac5a8c326d404bee3ce961df5ca628933e9dcc860d4206c12ab6b"
+  },
+  {
+   "element": "0ab2c6c3e37e93c4ed0bd73274cac2b58e229995aa96a8ad5db207b50de8512a",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "809f54688c7daaa3c723ce0d7c766ea69e5ba20b0708b10f16767f210255d067",
+   "libsodiumValid": true,
+   "valid": true,
+   "kTimesElement": "6c9b22034c620c06695b45b4777f6a694ece0cfd9618d3400245e8b359c78102"
+  },
+  {
+   "element": "801f54688c7daaa3c723ce0d7c766ea69e5ba20b0708b10f16767f210255d067",
+   "libsodiumValid": true,
+   "valid": true,
+   "kTimesElement": "363d9130c1071b1104515701cbb0b7579e15f4272a202532868e4887efbf9839"
+  },
+  {
+   "element": "601504242c5cd13c929836a53e65a0c5064c7d5117098f51f0b54c8c3ecddb60",
+   "libsodiumValid": true,
+   "valid": true,
+   "kTimesElement": "6cc9011df0a2a13ee5256ae756d2b49f24e483697475c80706b78b79eaa70059"
+  },
+  {
+   "element": "601504242c5cd13c929836a53e65a0c5064c7d7117098f51f0b54c8c3ecddb60",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "72924b7bb87350151254850d7d226ba81cae93b23cfc4bc1ea429a332791f80b",
+   "libsodiumValid": true,
+   "valid": true,
+   "kTimesElement": "80ff2126c340e7363e4bc692db9ac38610df30729e4d232b8d0d9ae847a6f625"
+  },
+  {
+   "element": "72924b7bb87350151254850d7d226ba81cae93b234fc4bc1ea429a332791f80b",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  },
+  {
+   "element": "8ee7befac0e5cebc0bf8ca878e5594917dc35777d72e7891432ca033133fd267",
+   "libsodiumValid": true,
+   "valid": true,
+   "kTimesElement": "f47ddfc2820bf265572f171deeea8c20154bd1bfd861186c63cd47f0f28b3f18"
+  },
+  {
+   "element": "8ee7befac0e5cebc0bf8ca878e5594917dc35777d72e7891432ca033133fd263",
+   "libsodiumValid": false,
+   "valid": false,
+   "kTimesElement": null
+  }
+ ]
+}

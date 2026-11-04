@@ -31,6 +31,27 @@ jobs:
       - run: cargo clippy --all-targets -- -D warnings
       - run: cargo test
 
+  pseudonym:
+    name: Pseudonym protocol (Rust)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: crates/liryc-pseudonym
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install the Rust toolchain
+        run: rustup toolchain install stable --profile minimal --component rustfmt,clippy
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: crates/liryc-pseudonym
+
+      - run: cargo fmt --check
+      - run: cargo clippy --all-targets -- -D warnings
+      # Fails when protocol/test-vectors/pseudonym.json no longer matches the code.
+      - run: cargo test
+
   browser:
     name: Browser logic (Node)
     runs-on: ubuntu-latest
@@ -58,10 +79,14 @@ jobs:
       - uses: shivammathur/setup-php@v2
         with:
           php-version: '8.2'
+          # The pseudonym needs libsodium's ristretto255.
+          extensions: sodium
           coverage: none
 
       - name: Lint
-        run: php -l src/GirderUploaderModule.php
+        run: |
+          php -l src/GirderUploaderModule.php
+          php -l src/Voprf.php
 
       - run: php tests/php/run.php
 

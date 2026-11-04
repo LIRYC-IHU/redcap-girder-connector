@@ -188,20 +188,241 @@
         return title ? (title + '^' + record) : record;
     }
 
+    function deidentificationFlags(config) {
+        var settings = (config && config.settings) || {};
+        return {
+            enableDicom: !!settings.deidentifyDicom,
+            enableXml: !!settings.deidentifyXmlEcg,
+            enableSchiller: !!settings.deidentifySchillerHolter
+        };
+    }
+
+    /** Ask the worker what a file is and who it belongs to, before deidentifying. */
+    function buildInspectRequest(file, config, bytes) {
+        return Object.assign({
+            type: 'inspect',
+            bytes: bytes,
+            fileName: String((file && file.name) || getFileDisplayName(file) || '')
+        }, deidentificationFlags(config));
+    }
+
+    var MISSING_NIP_REASON = 'The file carries no patient identifier (NIP): its dates cannot be shifted '
+        + 'and it cannot be checked against the record.';
+
+    /**
+     * Sort inspected files: the ones to deidentify are grouped by patient, and
+     * those that would need a pseudonym but carry no NIP are set apart. Files
+     * sent as they are (their format's deidentification is off) need neither.
+     *
+     * `entries` are `{ file, inspection }`, `inspection` being the worker's
+     * answer to an inspect request.
+     */
+    function groupByPatient(entries) {
+        var byNip = new Map();
+        var missingNip = [];
+        var passthrough = [];
+
+        (entries || []).forEach(function (entry) {
+            var inspection = entry.inspection || {};
+            if (!inspection.deidentified) {
+                passthrough.push(entry);
+                return;
+            }
+            var nip = String(inspection.nip || '');
+            if (!nip) {
+                missingNip.push(entry);
+                return;
+            }
+            if (!byNip.has(nip)) {
+                byNip.set(nip, {
+                    nip: nip,
+                    rawNip: '',
+                    familyName: '',
+                    givenName: '',
+                    birthDate: '',
+                    entries: []
+                });
+            }
+            var patient = byNip.get(nip);
+            patient.entries.push(entry);
+            // Some files of a series carry the name or birth date and others not.
+            patient.rawNip = patient.rawNip || String(inspection.rawNip || '');
+            patient.familyName = patient.familyName || String(inspection.familyName || '');
+            patient.givenName = patient.givenName || String(inspection.givenName || '');
+            patient.birthDate = patient.birthDate || String(inspection.birthDate || '');
+        });
+
+        return {
+            patients: Array.from(byNip.values()),
+            missingNip: missingNip,
+            passthrough: passthrough
+        };
+    }
+
+    function plural(count, word) {
+        return count + ' ' + word + (count === 1 ? '' : 's');
+    }
+
+    /**
+     * What a batch holds, for the uploader: DICOM series (modality,
+     * description, file count), ECGs and Holters.
+     */
+    function summarizeTransfer(entries) {
+        var series = new Map();
+        var summary = { dicomFiles: 0, series: [], ecgCount: 0, holterCount: 0, otherCount: 0 };
+
+        (entries || []).forEach(function (entry) {
+            var inspection = entry.inspection || {};
+            var format = String(inspection.format || '');
+            if (format === 'dicom') {
+                summary.dicomFiles += 1;
+                var uid = String(inspection.seriesUid || '');
+                var key = uid || 'no-series';
+                if (!series.has(key)) {
+                    series.set(key, {
+                        modality: String(inspection.modality || ''),
+                        description: String(inspection.seriesDescription || ''),
+                        fileCount: 0
+                    });
+                }
+                series.get(key).fileCount += 1;
+            } else if (format === 'xml') {
+                summary.ecgCount += 1;
+            } else if (format === 'schiller') {
+                summary.holterCount += 1;
+            } else {
+                summary.otherCount += 1;
+            }
+        });
+
+        summary.series = Array.from(series.values());
+        return summary;
+    }
+
+    /**
+     * What the fingerprint check found, as the uploader reads it. Earlier
+     * uploads with no fingerprint on the record predate fingerprints: nothing
+     * can be said about them, and saying "first upload" would be false.
+     */
+    function describePatientCheck(status, existingUploads) {
+        var earlier = plural(Number(existingUploads) || 0, 'earlier upload');
+        switch (status) {
+            case 'matched':
+                return {
+                    level: 'ok',
+                    title: 'Same patient signature',
+                    text: 'Consistent with the ' + earlier + ' of this record.'
+                };
+            case 'new':
+                return Number(existingUploads) > 0
+                    ? {
+                        level: 'warning',
+                        title: 'Earlier uploads cannot be compared',
+                        text: 'This record holds ' + earlier + ' from a version of the module without patient signature. '
+                            + 'Check that they belong to this patient. Their dates are on another time scale, so intervals '
+                            + 'with this upload are meaningless. The signature of this upload will be recorded.'
+                    }
+                    : {
+                        level: 'info',
+                        title: 'First upload for this record',
+                        text: "The patient's signature will be recorded."
+                    };
+            case 'mismatch':
+                return {
+                    level: 'danger',
+                    title: 'Patient signature mismatch',
+                    text: 'These files do not match the earlier uploads of this record: they probably belong to another patient. '
+                        + 'If you upload anyway, the alert is kept in the project log and on this field.'
+                };
+            case 'unchecked':
+                return {
+                    level: 'info',
+                    title: 'Patient check disabled',
+                    text: 'This project does not compare patient signatures.'
+                };
+            default:
+                return null;
+        }
+    }
+
+    /**
+     * What the uploader reviews before anything is sent: the patient as read
+     * from the files, what the batch holds, and what the fingerprint check
+     * found. Shown in the browser only.
+     */
+    function buildTransferReview(options) {
+        var patient = options.patient;
+        var summary = options.summary;
+        var check = describePatientCheck(options.checkStatus, options.existingUploads);
+        var content = summary.series.map(function (entry) {
+            return {
+                type: 'DICOM',
+                detail: [entry.modality || 'Unknown modality', entry.description].filter(Boolean).join(' - '),
+                files: entry.fileCount
+            };
+        });
+        if (summary.ecgCount) {
+            content.push({ type: 'ECG', detail: '', files: summary.ecgCount });
+        }
+        if (summary.holterCount) {
+            content.push({ type: 'Holter', detail: '', files: summary.holterCount });
+        }
+        if (summary.otherCount) {
+            content.push({ type: 'Other', detail: '', files: summary.otherCount });
+        }
+
+        var notes = [];
+        if (options.passthroughCount) {
+            notes.push(plural(options.passthroughCount, 'file')
+                + ' sent without deidentification (disabled for their format).');
+        }
+        if (options.setAsideCount) {
+            notes.push(plural(options.setAsideCount, 'file') + ' set aside, listed after the upload.');
+        }
+
+        return {
+            recordId: String(options.recordId || ''),
+            patient: patient ? [
+                { label: 'Last name', value: patient.familyName || '(not given)' },
+                { label: 'First name', value: patient.givenName || '(not given)' },
+                { label: 'Date of birth', value: patient.birthDate || '(not given)' },
+                { label: 'NIP', value: patient.rawNip || patient.nip }
+            ] : null,
+            content: content,
+            notes: notes,
+            check: check,
+            mismatch: options.checkStatus === 'mismatch',
+            confirmLabel: options.checkStatus === 'mismatch' ? 'Upload anyway' : 'Upload'
+        };
+    }
+
+    /**
+     * One upload, one patient: a mixed batch is refused as a whole. This message
+     * is stored in the REDCap field, so it must name nobody.
+     */
+    function buildMultiplePatientsError(patients) {
+        return 'These files belong to ' + patients.length
+            + ' different patients. Upload one patient at a time. Nothing was uploaded.';
+    }
+
     /** Message sent to the deidentification worker for a single file. */
-    function buildDeidentifyRequest(file, config, bytes) {
+    function buildDeidentifyRequest(file, config, bytes, keys) {
         var settings = (config && config.settings) || {};
         var recordId = String((config && config.recordId) || '').trim();
         var projectTitle = String((config && config.projectTitle) || '').trim();
         var relativePath = getFileDisplayName(file) || String((file && file.name) || '');
 
         return {
+            type: 'deidentify',
             bytes: bytes,
             fileName: String((file && file.name) || relativePath || ''),
             relativePath: relativePath,
             recordId: recordId,
             projectTitle: projectTitle,
             patientName: buildPatientName(projectTitle, recordId),
+            // Null makes the worker refuse rather than keep real dates and UIDs.
+            dateOffsetDays: keys && Number.isInteger(keys.dateOffsetDays) ? keys.dateOffsetDays : null,
+            uidKey: keys && typeof keys.uidKey === 'string' ? keys.uidKey : null,
             enableDicom: !!settings.deidentifyDicom,
             enableXml: !!settings.deidentifyXmlEcg,
             enableSchiller: !!settings.deidentifySchillerHolter
@@ -284,6 +505,17 @@
 
         refreshed.rejectedFiles = carried.rejectedFiles;
         refreshed.rejectedCount = carried.rejectedCount;
+        return refreshed;
+    }
+
+    /**
+     * Carry a confirmed fingerprint mismatch into a refreshed snapshot: like
+     * rejections, Girder has no idea it happened.
+     */
+    function carryPatientAlertForward(previous, refreshed) {
+        if (refreshed && typeof refreshed === 'object' && previous && previous.patientAlert) {
+            refreshed.patientAlert = previous.patientAlert;
+        }
         return refreshed;
     }
 
@@ -374,6 +606,7 @@
             totalSizeBytes: summary.totalSizeBytes,
             rejectedFiles: rejected.rejectedFiles,
             rejectedCount: rejected.rejectedCount,
+            patientAlert: payload.patientAlert || null,
             uploadState: payload.uploadState || null,
             girder: {
                 baseUrl: girder.baseUrl || null,
@@ -409,8 +642,16 @@
         summarizeOutcome: summarizeOutcome,
         buildRejectedSample: buildRejectedSample,
         carryRejectionsForward: carryRejectionsForward,
+        carryPatientAlertForward: carryPatientAlertForward,
         buildPatientName: buildPatientName,
         buildDeidentifyRequest: buildDeidentifyRequest,
+        buildInspectRequest: buildInspectRequest,
+        groupByPatient: groupByPatient,
+        summarizeTransfer: summarizeTransfer,
+        describePatientCheck: describePatientCheck,
+        buildTransferReview: buildTransferReview,
+        buildMultiplePatientsError: buildMultiplePatientsError,
+        MISSING_NIP_REASON: MISSING_NIP_REASON,
         isSkipError: isSkipError,
         formatSize: formatSize,
         buildFolderUrl: buildFolderUrl,

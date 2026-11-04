@@ -160,10 +160,36 @@ pub fn validate(input_bytes: &[u8], file_name: &str) -> Result<(), String> {
     }
 }
 
-pub fn deidentify(input_bytes: &[u8], file_name: &str, record_id: &str) -> Result<Vec<u8>, String> {
+/// `date_offset_days` comes from the patient's pseudonym; every date of the
+/// document moves by it, and the birth date is blanked.
+pub fn deidentify(
+    input_bytes: &[u8],
+    file_name: &str,
+    record_id: &str,
+    date_offset_days: i64,
+) -> Result<Vec<u8>, String> {
     validate(input_bytes, file_name)?;
     let scan = scan_document(input_bytes);
-    rewrite(input_bytes, record_id.trim(), &scan)
+    rewrite(input_bytes, record_id.trim(), date_offset_days, &scan)
+}
+
+/// Who the document belongs to, read before deidentification; see
+/// [`crate::dicom::Identity`]. The NIP is the standard place,
+/// `trialSubject/id/@extension`, or else a vendor `PatientID` element.
+pub fn identity(input_bytes: &[u8]) -> crate::dicom::Identity {
+    let scan = scan_document(input_bytes);
+    let name = match (scan.family_name, scan.given_name) {
+        (Some(family), Some(given)) => Some(format!("{family}^{given}")),
+        (Some(family), None) => Some(family),
+        (None, Some(given)) => Some(format!("^{given}")),
+        (None, None) => scan.full_name,
+    };
+    crate::dicom::Identity {
+        nip: scan.subject_id.or(scan.vendor_patient_id),
+        name,
+        birth_date: scan.birth_date,
+        series: None,
+    }
 }
 
 /// Decide what an XML file is, from its root element and namespace.
@@ -368,13 +394,21 @@ fn is_signal(path: &str) -> bool {
 /// What a first pass over the document needs to establish.
 ///
 /// The rewriter writes as it reads, so anything that depends on the document as
-/// a whole — the date offset, and whether the identity anchors are there to be
-/// filled in or have to be created — has to be known before the first byte goes
-/// out.
+/// a whole — whether the identity anchors are there to be filled in or have to
+/// be created — has to be known before the first byte goes out. The same pass
+/// reads who the document belongs to, for the pseudonym.
 #[derive(Debug, Default)]
 struct DocumentScan {
     birth_date: Option<String>,
     has_trial_subject_id: bool,
+    /// `trialSubject/id/@extension`.
+    subject_id: Option<String>,
+    /// A vendor `PatientID` element, used when the standard place is empty.
+    vendor_patient_id: Option<String>,
+    family_name: Option<String>,
+    given_name: Option<String>,
+    /// A `name` holding the whole name as text, as real aECGs often do.
+    full_name: Option<String>,
 }
 
 fn scan_document(input_bytes: &[u8]) -> DocumentScan {
@@ -382,10 +416,40 @@ fn scan_document(input_bytes: &[u8]) -> DocumentScan {
     let mut path: Vec<String> = Vec::new();
     let mut scan = DocumentScan::default();
 
-    fn note(scan: &mut DocumentScan, path: &[String]) {
+    fn note(scan: &mut DocumentScan, path: &[String], element: &BytesStart<'_>) {
         let joined = normalize_path(&path.join("/")).to_lowercase();
         if joined.ends_with("trialsubject/id") {
             scan.has_trial_subject_id = true;
+            if scan.subject_id.is_none() {
+                scan.subject_id = element
+                    .attributes()
+                    .flatten()
+                    .find(|attr| attr.key.as_ref() == b"extension")
+                    .map(|attr| attr.unescape_value().unwrap_or_default().trim().to_string())
+                    .filter(|id| !id.is_empty());
+            }
+        }
+    }
+
+    /// Text of a person's identity elements, under the trial subject.
+    fn note_text(scan: &mut DocumentScan, path: &[String], text: &str) {
+        let joined = normalize_path(&path.join("/")).to_lowercase();
+        if text.is_empty() || !joined.contains("trialsubject") {
+            return;
+        }
+        let slot = if joined.ends_with("/patientid") {
+            &mut scan.vendor_patient_id
+        } else if joined.ends_with("name/family") || joined.ends_with("/lastname") {
+            &mut scan.family_name
+        } else if joined.ends_with("name/given") || joined.ends_with("/firstname") {
+            &mut scan.given_name
+        } else if joined.ends_with("subjectdemographicperson/name") {
+            &mut scan.full_name
+        } else {
+            return;
+        };
+        if slot.is_none() {
+            *slot = Some(text.to_string());
         }
     }
 
@@ -393,25 +457,27 @@ fn scan_document(input_bytes: &[u8]) -> DocumentScan {
         match reader.read_event() {
             Ok(Event::Start(e)) => {
                 path.push(String::from_utf8_lossy(e.name().as_ref()).to_string());
-                note(&mut scan, &path);
+                note(&mut scan, &path, &e);
                 if scan.birth_date.is_none() {
                     scan.birth_date = birth_date_attribute(&e, &path);
                 }
             }
             Ok(Event::Empty(e)) => {
                 path.push(String::from_utf8_lossy(e.name().as_ref()).to_string());
-                note(&mut scan, &path);
+                note(&mut scan, &path, &e);
                 if scan.birth_date.is_none() {
                     scan.birth_date = birth_date_attribute(&e, &path);
                 }
                 path.pop();
             }
             Ok(Event::Text(e)) => {
+                let text = e.unescape().unwrap_or_default().trim().to_string();
                 if scan.birth_date.is_none() && is_birth_date_path(&path.join("/")) {
-                    let text = e.unescape().unwrap_or_default().trim().to_string();
                     if dates::parse(&text).is_some() {
                         scan.birth_date = Some(text);
                     }
+                } else {
+                    note_text(&mut scan, &path, &text);
                 }
             }
             Ok(Event::End(_)) => {
@@ -449,7 +515,7 @@ fn birth_date_attribute(element: &BytesStart<'_>, path: &[String]) -> Option<Str
 /// Everything the rewriter needs that is constant for one document.
 struct Rewriter {
     record_id: String,
-    date_offset: Option<i64>,
+    date_offset: i64,
     signal_kept: usize,
     /// The source had no `trialSubject/id`, so one has to be written: the aECG
     /// schema requires it, and it is where the pseudonym belongs. Without it the
@@ -495,22 +561,13 @@ impl Rewriter {
             Policy::UidRoot => uid_root_for(path),
             Policy::Drop => return None,
             Policy::Blank => String::new(),
-            Policy::BirthDate => {
-                if dates::parse(trimmed).is_some() {
-                    dates::as_epoch_birth_date(trimmed)
-                } else {
-                    String::new()
-                }
-            }
-            Policy::Keep => match (dates::parse(trimmed), self.date_offset) {
-                // A date on a kept path still moves with the patient's offset.
-                (Some(_), Some(offset)) => {
-                    dates::shift(trimmed, offset).unwrap_or_else(|| original.to_string())
-                }
-                // A date with no birth date to anchor it: there is no age to
-                // preserve, so keeping it would keep the real acquisition date.
-                (Some(_), None) => String::new(),
-                (None, _) => original.to_string(),
+            // Shifted like the others, the birth date would give the exact
+            // age back by subtraction.
+            Policy::BirthDate => String::new(),
+            // A date on a kept path moves with the patient's offset.
+            Policy::Keep => match dates::shift(trimmed, self.date_offset) {
+                Some(shifted) => shifted,
+                None => original.to_string(),
             },
         })
     }
@@ -546,7 +603,12 @@ impl Rewriter {
 /// repeat the same element path many times (one per lead, per measurement…)
 /// with different values, so a path-keyed value map would overwrite every
 /// occurrence with the value of the last one.
-fn rewrite(input_bytes: &[u8], record_id: &str, scan: &DocumentScan) -> Result<Vec<u8>, String> {
+fn rewrite(
+    input_bytes: &[u8],
+    record_id: &str,
+    date_offset: i64,
+    scan: &DocumentScan,
+) -> Result<Vec<u8>, String> {
     let body = strip_bom(input_bytes);
     let mut reader = Reader::from_reader(body);
     let mut output = Vec::new();
@@ -559,10 +621,7 @@ fn rewrite(input_bytes: &[u8], record_id: &str, scan: &DocumentScan) -> Result<V
     let mut path: Vec<String> = Vec::new();
     let mut state = Rewriter {
         record_id: record_id.to_string(),
-        date_offset: scan
-            .birth_date
-            .as_deref()
-            .and_then(dates::offset_from_birth_date),
+        date_offset,
         signal_kept: 0,
         missing_subject_id: !scan.has_trial_subject_id,
     };

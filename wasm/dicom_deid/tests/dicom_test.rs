@@ -7,6 +7,11 @@ use dicom_deid::dicom;
 use dicom_dictionary_std::tags;
 use dicom_object::InMemDicomObject;
 
+/// Deidentify with the fixed test keys; see [`patient_keys`].
+fn deidentify(input: &[u8], record_id: &str, patient_name: &str) -> Result<Vec<u8>, String> {
+    dicom::deidentify(input, record_id, patient_name, &patient_keys())
+}
+
 fn contains(haystack: &[u8], needle: &str) -> bool {
     haystack
         .windows(needle.len())
@@ -49,7 +54,7 @@ fn deidentifies_a_bare_data_set_into_a_part10_file() {
         ("implicit VR", dicom_fixture_bare_implicit_vr()),
         ("meta without DICM", dicom_fixture_without_magic_code()),
     ] {
-        let output = dicom::deidentify(&source, "REC-42", "MY PROJECT^REC-42")
+        let output = deidentify(&source, "REC-42", "MY PROJECT^REC-42")
             .unwrap_or_else(|e| panic!("{label}: {e}"));
 
         // The output gains the header the input lacked, so any viewer opens it.
@@ -99,7 +104,7 @@ fn refuses_to_deidentify_a_dicomdir() {
     // The index names every patient of the media and points at files and UIDs
     // that the upload renames and rehashes: nothing useful survives, so it is
     // skipped rather than uploaded.
-    let error = dicom::deidentify(&dicomdir_fixture(), "REC-42", "MY PROJECT^REC-42").unwrap_err();
+    let error = deidentify(&dicomdir_fixture(), "REC-42", "MY PROJECT^REC-42").unwrap_err();
     assert!(error.starts_with("SKIP:"), "got {error}");
     assert!(error.contains("DICOMDIR"), "got {error}");
 }
@@ -120,7 +125,7 @@ fn rejects_non_dicom_input() {
 
 #[test]
 fn replaces_patient_identity_with_redcap_identifiers() {
-    let output = dicom::deidentify(&dicom_fixture(), "REC-42", "MY PROJECT^REC-42")
+    let output = deidentify(&dicom_fixture(), "REC-42", "MY PROJECT^REC-42")
         .expect("deidentification succeeds");
 
     assert_eq!(
@@ -132,14 +137,40 @@ fn replaces_patient_identity_with_redcap_identifiers() {
         Some("MY PROJECT^REC-42")
     );
     assert_eq!(
-        read_dicom_string(&output, tags::DEIDENTIFICATION_METHOD).as_deref(),
-        Some("IHU LIRYC REDCAP PLUGIN")
+        read_dicom_string(&output, tags::DEIDENTIFICATION_METHOD),
+        Some(dicom::deidentification_method())
+    );
+}
+
+#[test]
+fn the_deidentification_method_names_the_release() {
+    // A file must say which release deidentified it: the rules, the date
+    // policy among them, change between releases.
+    let version = std::fs::read_to_string(concat!(env!("CARGO_MANIFEST_DIR"), "/../../VERSION"))
+        .expect("the repository VERSION file");
+    let method = dicom::deidentification_method();
+
+    assert_eq!(
+        method,
+        format!("IHU LIRYC REDCAP PLUGIN v{}", version.trim())
+    );
+    // `DeidentificationMethod` is a LO: 64 characters at most.
+    assert!(method.len() <= 64, "{method} does not fit a LO");
+}
+
+#[test]
+fn the_modified_dates_are_declared() {
+    let output = deidentify(&dicom_fixture(), "REC-42", "MY PROJECT^REC-42").unwrap();
+
+    assert_eq!(
+        read_dicom_string(&output, tags::LONGITUDINAL_TEMPORAL_INFORMATION_MODIFIED).as_deref(),
+        Some("MODIFIED")
     );
 }
 
 #[test]
 fn removes_every_identifying_value_from_the_output_bytes() {
-    let output = dicom::deidentify(&dicom_fixture(), "REC-42", "MY PROJECT^REC-42")
+    let output = deidentify(&dicom_fixture(), "REC-42", "MY PROJECT^REC-42")
         .expect("deidentification succeeds");
 
     for phi in [
@@ -160,7 +191,7 @@ fn removes_every_identifying_value_from_the_output_bytes() {
 
 #[test]
 fn rewrites_instance_uids_under_the_configured_uid_root() {
-    let output = dicom::deidentify(&dicom_fixture(), "REC-42", "MY PROJECT^REC-42")
+    let output = deidentify(&dicom_fixture(), "REC-42", "MY PROJECT^REC-42")
         .expect("deidentification succeeds");
 
     for tag in [
@@ -182,8 +213,8 @@ fn rewrites_instance_uids_under_the_configured_uid_root() {
 
 #[test]
 fn keeps_uids_stable_across_runs_so_series_stay_grouped() {
-    let first = dicom::deidentify(&dicom_fixture(), "REC-42", "MY PROJECT^REC-42").unwrap();
-    let second = dicom::deidentify(&dicom_fixture(), "REC-42", "MY PROJECT^REC-42").unwrap();
+    let first = deidentify(&dicom_fixture(), "REC-42", "MY PROJECT^REC-42").unwrap();
+    let second = deidentify(&dicom_fixture(), "REC-42", "MY PROJECT^REC-42").unwrap();
 
     assert_eq!(
         read_dicom_string(&first, tags::STUDY_INSTANCE_UID),
@@ -198,7 +229,7 @@ fn keeps_uids_stable_across_runs_so_series_stay_grouped() {
 
 #[test]
 fn output_is_a_readable_dicom_file() {
-    let output = dicom::deidentify(&dicom_fixture(), "REC-42", "MY PROJECT^REC-42").unwrap();
+    let output = deidentify(&dicom_fixture(), "REC-42", "MY PROJECT^REC-42").unwrap();
 
     // The anonymized bytes are uploaded as-is, so they must still parse.
     assert!(dicom::validate(&output).is_ok());
@@ -209,41 +240,41 @@ fn output_is_a_readable_dicom_file() {
     );
 }
 
+// --- Dates -------------------------------------------------------------------
+
 #[test]
-fn pins_the_birth_date_to_the_epoch() {
-    let output = dicom::deidentify(&dicom_fixture(), "REC-42", "MY PROJECT^REC-42").unwrap();
+fn the_birth_date_is_present_and_empty() {
+    // Type 2 in the Patient module; shifted like the other dates, it would give
+    // the exact age back by subtraction.
+    let output = deidentify(&dicom_fixture(), "REC-42", "MY PROJECT^REC-42").unwrap();
 
     assert_eq!(
         read_dicom_string(&output, tags::PATIENT_BIRTH_DATE).as_deref(),
-        Some("19700101")
+        Some("")
     );
 }
 
 #[test]
-fn shifts_the_study_so_the_age_is_preserved() {
-    // Same rule as the XML deidentifier: birth lands on 1970-01-01 and every
-    // other date moves with it, so age at acquisition survives and the real
-    // calendar date does not.
-    let output = dicom::deidentify(&dicom_fixture(), "REC-42", "MY PROJECT^REC-42").unwrap();
+fn the_study_moves_by_exactly_the_offset() {
+    let output = deidentify(&dicom_fixture(), "REC-42", "MY PROJECT^REC-42").unwrap();
     let study = read_dicom_string(&output, tags::STUDY_DATE).unwrap();
 
-    assert_eq!(
-        days_between("19700101", &study),
-        days_between(DICOM_BIRTH_DATE, DICOM_STUDY_DATE),
-        "age at acquisition changed (study shifted to {study})"
+    assert_eq!(days_between(DICOM_STUDY_DATE, &study), DATE_OFFSET);
+    assert!(
+        study.starts_with("19"),
+        "{study} should land in the 20th century"
     );
-    assert_ne!(study, DICOM_STUDY_DATE, "the real study date leaked");
 }
 
 #[test]
 fn moves_every_date_by_the_same_offset() {
-    let january = dicom::deidentify(
+    let january = deidentify(
         &dicom_fixture_with_study_date("20240115"),
         "REC-42",
         "MY PROJECT^REC-42",
     )
     .unwrap();
-    let february = dicom::deidentify(
+    let february = deidentify(
         &dicom_fixture_with_study_date("20240215"),
         "REC-42",
         "MY PROJECT^REC-42",
@@ -261,25 +292,10 @@ fn moves_every_date_by_the_same_offset() {
 }
 
 #[test]
-fn the_shift_differs_between_patients() {
-    // The offset comes from each patient's own birth date, so two patients
-    // imaged the same day do not land on the same anonymized date.
-    let older =
-        dicom::deidentify(&dicom_fixture_with_birth_date("19400301"), "REC-1", "P^1").unwrap();
-    let younger =
-        dicom::deidentify(&dicom_fixture_with_birth_date("19800301"), "REC-2", "P^2").unwrap();
-
-    assert_ne!(
-        read_dicom_string(&older, tags::STUDY_DATE),
-        read_dicom_string(&younger, tags::STUDY_DATE)
-    );
-}
-
-#[test]
 fn series_and_acquisition_dates_move_with_the_study() {
     // The anonymizer removes these by default; the date policy keeps them,
     // shifted, so the acquisition timeline stays coherent.
-    let output = dicom::deidentify(&dicom_fixture(), "REC-42", "MY PROJECT^REC-42").unwrap();
+    let output = deidentify(&dicom_fixture(), "REC-42", "MY PROJECT^REC-42").unwrap();
     let study = read_dicom_string(&output, tags::STUDY_DATE).unwrap();
 
     assert_eq!(
@@ -355,11 +371,11 @@ fn with_scattered_dates(object: &mut InMemDicomObject) {
 }
 
 #[test]
-fn every_date_moves_by_the_birth_offset_not_only_the_well_known_ones() {
-    // Only a handful of tags used to be rebased on the birth date; the rest kept
-    // the anonymizer's own shift, or none, so one file mixed two calendars and
-    // the procedure step ended 18 years before it began.
-    let output = dicom::deidentify(
+fn every_date_moves_not_only_the_well_known_ones() {
+    // Only a handful of tags used to be shifted; the rest kept the anonymizer's
+    // own shift, or none, so one file mixed two calendars and the procedure
+    // step ended 18 years before it began.
+    let output = deidentify(
         &dicom_fixture_edited(with_scattered_dates),
         "REC-42",
         "MY PROJECT^REC-42",
@@ -388,7 +404,7 @@ fn every_date_moves_by_the_birth_offset_not_only_the_well_known_ones() {
 
 #[test]
 fn every_value_of_a_multi_valued_date_is_shifted() {
-    let output = dicom::deidentify(
+    let output = deidentify(
         &dicom_fixture_edited(|object| {
             put(
                 object,
@@ -405,87 +421,46 @@ fn every_value_of_a_multi_valued_date_is_shifted() {
     let calibrations: Vec<&str> = calibrations.split('\\').collect();
 
     assert_eq!(calibrations.len(), 2);
-    assert_eq!(
-        days_between("19700101", calibrations[1]),
-        days_between(DICOM_BIRTH_DATE, "20230601")
-    );
+    assert_eq!(days_between("20230601", calibrations[1]), DATE_OFFSET);
     assert!(!contains(&output, "20230601"), "the second date leaked");
 }
 
 #[test]
-fn the_birth_offset_applies_whatever_the_patient_id() {
-    // The shift depends on the birth date alone. The anonymizer's own shift was
-    // keyed on PatientID and, without one, left the date as it was: next to a
-    // rebased date, a real one gives the birth date away by subtraction.
-    for patient_id in [None, Some("")] {
-        let output = dicom::deidentify(
+fn dates_move_whatever_the_patient_id_and_birth_date() {
+    // The offset comes from the pseudonym, not from anything left in the file:
+    // a missing PatientID or birth date changes nothing about the dates.
+    for (keep_patient_id, keep_birth_date) in [(true, false), (false, true), (false, false)] {
+        let output = deidentify(
             &dicom_fixture_edited(|object| {
-                match patient_id {
-                    None => {
-                        object.remove_element(tags::PATIENT_ID);
-                    }
-                    Some(id) => put(object, tags::PATIENT_ID, VR::LO, id),
-                }
-                with_scattered_dates(object);
-            }),
-            "REC-42",
-            "MY PROJECT^REC-42",
-        )
-        .unwrap();
-        let study = read_dicom_string(&output, tags::STUDY_DATE).unwrap();
-
-        assert_eq!(
-            read_dicom_string(&output, tags::PATIENT_BIRTH_DATE).as_deref(),
-            Some("19700101"),
-            "{patient_id:?}"
-        );
-        assert_eq!(
-            days_between("19700101", &study),
-            days_between(DICOM_BIRTH_DATE, DICOM_STUDY_DATE),
-            "{patient_id:?}"
-        );
-        assert!(
-            !contains(&output, DICOM_STUDY_DATE),
-            "a real date leaked ({patient_id:?})"
-        );
-    }
-}
-
-#[test]
-fn without_a_birth_date_every_date_is_removed() {
-    // No birth date means no age to preserve and nothing to shift from: no
-    // date may survive, whether or not the file has a PatientID.
-    for keep_patient_id in [true, false] {
-        let output = dicom::deidentify(
-            &dicom_fixture_edited(|object| {
-                object.remove_element(tags::PATIENT_BIRTH_DATE);
                 if !keep_patient_id {
                     object.remove_element(tags::PATIENT_ID);
                 }
+                if !keep_birth_date {
+                    object.remove_element(tags::PATIENT_BIRTH_DATE);
+                }
                 with_scattered_dates(object);
             }),
             "REC-42",
             "MY PROJECT^REC-42",
         )
         .unwrap();
+        let case = format!("PatientID kept: {keep_patient_id}, birth date kept: {keep_birth_date}");
+        let study = read_dicom_string(&output, tags::STUDY_DATE).unwrap();
 
-        for tag in [
-            tags::PATIENT_BIRTH_DATE,
-            tags::STUDY_DATE,
-            tags::SERIES_DATE,
-            tags::CONTENT_DATE,
-            tags::DATE_OF_SECONDARY_CAPTURE,
-            tags::PERFORMED_PROCEDURE_STEP_END_DATE,
-            tags::START_ACQUISITION_DATE_TIME,
-        ] {
-            assert_eq!(
-                read_dicom_string(&output, tag),
-                None,
-                "{tag} (PatientID kept: {keep_patient_id})"
-            );
-        }
-        assert_eq!(read_nested_date(&output), None);
-        assert!(!contains(&output, DICOM_STUDY_DATE), "a real date leaked");
+        assert_eq!(
+            days_between(DICOM_STUDY_DATE, &study),
+            DATE_OFFSET,
+            "{case}"
+        );
+        assert_eq!(read_nested_date(&output), Some(study), "{case}");
+        assert!(
+            !contains(&output, DICOM_STUDY_DATE),
+            "a real date leaked ({case})"
+        );
+        assert!(
+            !contains(&output, DICOM_BIRTH_DATE),
+            "the birth date leaked ({case})"
+        );
     }
 }
 
@@ -493,7 +468,7 @@ fn without_a_birth_date_every_date_is_removed() {
 fn a_date_not_encoded_as_a_date_is_removed() {
     // A study date written as UN cannot be shifted; it must not reach the
     // anonymizer's hash shift either.
-    let output = dicom::deidentify(
+    let output = deidentify(
         &dicom_fixture_edited(|object| {
             object.put(DataElement::new(
                 tags::STUDY_DATE,
@@ -511,23 +486,258 @@ fn a_date_not_encoded_as_a_date_is_removed() {
 }
 
 #[test]
-fn a_partial_birth_date_is_removed_rather_than_kept_or_fatal() {
-    // `1954` cannot anchor a shift. Without a PatientID the anonymizer used to
-    // keep it verbatim; with one, it rejected the whole file.
-    for keep_patient_id in [true, false] {
-        let output = dicom::deidentify(
-            &dicom_fixture_edited(|object| {
-                put(object, tags::PATIENT_BIRTH_DATE, VR::DA, "1954");
-                if !keep_patient_id {
-                    object.remove_element(tags::PATIENT_ID);
-                }
-            }),
-            "REC-42",
-            "MY PROJECT^REC-42",
-        )
-        .unwrap_or_else(|e| panic!("rejected (PatientID kept: {keep_patient_id}): {e}"));
+fn a_partial_birth_date_is_blanked_rather_than_kept_or_fatal() {
+    // `1954` is not a date. The anonymizer used to keep it verbatim, or reject
+    // the whole file.
+    let output = deidentify(
+        &dicom_fixture_edited(|object| {
+            put(object, tags::PATIENT_BIRTH_DATE, VR::DA, "1954");
+        }),
+        "REC-42",
+        "MY PROJECT^REC-42",
+    )
+    .unwrap();
 
-        assert_eq!(read_dicom_string(&output, tags::PATIENT_BIRTH_DATE), None);
-        assert!(!contains(&output, DICOM_STUDY_DATE), "a real date leaked");
+    assert_eq!(
+        read_dicom_string(&output, tags::PATIENT_BIRTH_DATE).as_deref(),
+        Some("")
+    );
+    assert_eq!(read_dicom_string(&output, tags::PATIENT_AGE), None);
+}
+
+// --- Age ---------------------------------------------------------------------
+
+fn age_for(birth: &str, study: &str) -> Option<String> {
+    let output = deidentify(
+        &dicom_fixture_edited(|object| {
+            put(object, tags::PATIENT_BIRTH_DATE, VR::DA, birth);
+            put(object, tags::STUDY_DATE, VR::DA, study);
+        }),
+        "REC-42",
+        "MY PROJECT^REC-42",
+    )
+    .unwrap();
+    read_dicom_string(&output, tags::PATIENT_AGE)
+}
+
+#[test]
+fn the_age_is_written_in_years_on_the_real_dates() {
+    // Born 1954-02-12, imaged 2024-01-15: the birthday is not reached yet.
+    assert_eq!(
+        age_for(DICOM_BIRTH_DATE, DICOM_STUDY_DATE).as_deref(),
+        Some("069Y")
+    );
+}
+
+#[test]
+fn young_children_get_months_and_newborns_weeks() {
+    assert_eq!(age_for("20220201", "20240115").as_deref(), Some("023M"));
+    assert_eq!(age_for("20231001", "20240115").as_deref(), Some("003M"));
+    assert_eq!(age_for("20240101", "20240115").as_deref(), Some("002W"));
+}
+
+#[test]
+fn without_a_birth_date_a_valid_age_in_the_file_is_kept() {
+    let output = deidentify(
+        &dicom_fixture_edited(|object| {
+            object.remove_element(tags::PATIENT_BIRTH_DATE);
+            put(object, tags::PATIENT_AGE, VR::AS, "070Y");
+        }),
+        "REC-42",
+        "MY PROJECT^REC-42",
+    )
+    .unwrap();
+    assert_eq!(
+        read_dicom_string(&output, tags::PATIENT_AGE).as_deref(),
+        Some("070Y")
+    );
+
+    let garbage = deidentify(
+        &dicom_fixture_edited(|object| {
+            object.remove_element(tags::PATIENT_BIRTH_DATE);
+            put(object, tags::PATIENT_AGE, VR::AS, "seventy");
+        }),
+        "REC-42",
+        "MY PROJECT^REC-42",
+    )
+    .unwrap();
+    assert_eq!(read_dicom_string(&garbage, tags::PATIENT_AGE), None);
+}
+
+// --- Identity ------------------------------------------------------------------
+
+#[test]
+fn the_identity_is_read_before_deidentification() {
+    let identity = dicom::identity(&dicom_fixture()).unwrap();
+
+    assert_eq!(identity.nip.as_deref(), Some(DICOM_PATIENT_ID));
+    assert_eq!(identity.name.as_deref(), Some(DICOM_PATIENT_NAME));
+    assert_eq!(identity.birth_date.as_deref(), Some(DICOM_BIRTH_DATE));
+}
+
+#[test]
+fn a_file_without_patient_id_has_no_nip() {
+    let identity = dicom::identity(&dicom_fixture_edited(|object| {
+        object.remove_element(tags::PATIENT_ID);
+    }))
+    .unwrap();
+
+    assert_eq!(identity.nip, None);
+}
+
+// --- UIDs and hashed identifiers -------------------------------------------------
+
+fn uid_with_key(uid_key: [u8; 32]) -> String {
+    let keys = dicom_deid::PatientKeys {
+        uid_key,
+        ..patient_keys()
+    };
+    let output = dicom::deidentify(&dicom_fixture(), "REC-42", "P^42", &keys).unwrap();
+    read_dicom_string(&output, tags::STUDY_INSTANCE_UID).unwrap()
+}
+
+#[test]
+fn uids_depend_on_the_key() {
+    // The anonymizer's unkeyed hash let anyone holding the original UID compute
+    // the rewritten one, and so link the file back to the PACS.
+    assert_eq!(uid_with_key([1; 32]), uid_with_key([1; 32]));
+    assert_ne!(uid_with_key([1; 32]), uid_with_key([2; 32]));
+}
+
+#[test]
+fn references_keep_pointing_at_their_targets() {
+    // Inside a sequence, a reference to this very instance must follow it.
+    let output = deidentify(
+        &dicom_fixture_edited(|object| {
+            let mut item = InMemDicomObject::new_empty();
+            put(
+                &mut item,
+                tags::REFERENCED_SOP_INSTANCE_UID,
+                VR::UI,
+                DICOM_SOP_UID,
+            );
+            put(
+                &mut item,
+                tags::REFERENCED_SOP_CLASS_UID,
+                VR::UI,
+                "1.2.840.10008.5.1.4.1.1.7",
+            );
+            object.put(DataElement::new(
+                tags::REFERENCED_SERIES_SEQUENCE,
+                VR::SQ,
+                DataSetSequence::from(vec![item]),
+            ));
+        }),
+        "REC-42",
+        "MY PROJECT^REC-42",
+    )
+    .unwrap();
+
+    let object = dicom_object::from_reader(std::io::Cursor::new(&output[128..])).unwrap();
+    let sequence = object.element(tags::REFERENCED_SERIES_SEQUENCE).unwrap();
+    let item = &sequence.items().unwrap()[0];
+    let read = |tag| {
+        item.element(tag)
+            .unwrap()
+            .to_str()
+            .unwrap()
+            .trim()
+            .to_string()
+    };
+
+    assert_eq!(
+        Some(read(tags::REFERENCED_SOP_INSTANCE_UID)),
+        read_dicom_string(&output, tags::SOP_INSTANCE_UID)
+    );
+    assert_eq!(
+        read(tags::REFERENCED_SOP_CLASS_UID),
+        "1.2.840.10008.5.1.4.1.1.7"
+    );
+    assert!(!contains(&output, DICOM_SOP_UID), "the original UID leaked");
+}
+
+#[test]
+fn the_file_meta_group_follows_the_instance_uid() {
+    let output = deidentify(&dicom_fixture(), "REC-42", "MY PROJECT^REC-42").unwrap();
+    let object = dicom_object::from_reader(std::io::Cursor::new(&output[128..])).unwrap();
+
+    assert_eq!(
+        Some(
+            object
+                .meta()
+                .media_storage_sop_instance_uid()
+                .trim_end_matches('\0')
+                .to_string()
+        ),
+        read_dicom_string(&output, tags::SOP_INSTANCE_UID)
+    );
+}
+
+#[test]
+fn class_uids_are_left_alone() {
+    let output = deidentify(&dicom_fixture(), "REC-42", "MY PROJECT^REC-42").unwrap();
+
+    assert_eq!(
+        read_dicom_string(&output, tags::SOP_CLASS_UID).as_deref(),
+        Some("1.2.840.10008.5.1.4.1.1.7")
+    );
+}
+
+#[test]
+fn a_uid_the_anonymizer_has_no_rule_for_is_rewritten() {
+    const VENDOR_UID: &str = "1.3.6.1.4.1.5962.99.1.1";
+    let output = deidentify(
+        &dicom_fixture_edited(|object| {
+            put(
+                object,
+                tags::REFERENCED_FRAME_OF_REFERENCE_UID,
+                VR::UI,
+                VENDOR_UID,
+            );
+            put(object, tags::CONCATENATION_UID, VR::UI, VENDOR_UID);
+        }),
+        "REC-42",
+        "MY PROJECT^REC-42",
+    )
+    .unwrap();
+
+    assert!(!contains(&output, VENDOR_UID), "the original UID leaked");
+}
+
+#[test]
+fn identifiers_the_anonymizer_would_hash_are_emptied() {
+    // An unkeyed hash of an accession number can be computed by anyone who has
+    // the number. These attributes are type 2 at most: present and empty.
+    let output = deidentify(
+        &dicom_fixture_edited(|object| {
+            put(object, tags::ACCESSION_NUMBER, VR::SH, "ACC-20240115-77");
+            put(
+                object,
+                tags::PLACER_ORDER_NUMBER_IMAGING_SERVICE_REQUEST,
+                VR::LO,
+                "ORDER-55",
+            );
+            put(
+                object,
+                tags::FILLER_ORDER_NUMBER_IMAGING_SERVICE_REQUEST,
+                VR::LO,
+                "ORDER-56",
+            );
+        }),
+        "REC-42",
+        "MY PROJECT^REC-42",
+    )
+    .unwrap();
+
+    for tag in [
+        tags::ACCESSION_NUMBER,
+        tags::PLACER_ORDER_NUMBER_IMAGING_SERVICE_REQUEST,
+        tags::FILLER_ORDER_NUMBER_IMAGING_SERVICE_REQUEST,
+    ] {
+        assert_eq!(
+            read_dicom_string(&output, tag).as_deref(),
+            Some(""),
+            "{tag}"
+        );
     }
 }
