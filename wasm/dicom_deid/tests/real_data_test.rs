@@ -21,6 +21,16 @@ use quick_xml::Reader;
 
 const RECORD_ID: &str = "REC-42";
 const PATIENT_NAME: &str = "TEST PROJECT^REC-42";
+/// A date offset within the real range; in production it comes from the
+/// patient's pseudonym.
+const DATE_OFFSET: i64 = -27_000;
+
+fn patient_keys() -> dicom_deid::PatientKeys {
+    dicom_deid::PatientKeys {
+        date_offset_days: DATE_OFFSET,
+        uid_key: [0x5A; 32],
+    }
+}
 
 /// Short values (a sex code, an age, two digits of a room number) reappear by
 /// chance inside waveform data or UIDs, so only longer ones are searched for.
@@ -107,7 +117,7 @@ fn real_dicom_files_are_deidentified() {
             "{name}: no identifying element found — is this really a patient file?"
         );
 
-        let output = dicom::deidentify(&source, RECORD_ID, PATIENT_NAME)
+        let output = dicom::deidentify(&source, RECORD_ID, PATIENT_NAME, &patient_keys())
             .unwrap_or_else(|e| panic!("{name}: {e}"));
 
         for (tag, value) in &identifiers {
@@ -132,21 +142,23 @@ fn real_dicom_files_are_deidentified() {
             "{name}: the deidentified file no longer parses"
         );
 
-        if let Some(birth) = source_birth_date(&source) {
-            let offset = dates::offset_from_birth_date(&birth).expect("birth date parses");
+        if source_birth_date(&source).is_some() {
             assert_eq!(
-                read_string(&output, dicom_dictionary_std::tags::PATIENT_BIRTH_DATE).as_deref(),
-                Some("19700101"),
-                "{name}: the birth date was not pinned to the epoch"
+                read_string(&output, dicom_dictionary_std::tags::PATIENT_BIRTH_DATE),
+                None,
+                "{name}: the birth date was not blanked"
             );
-            if let Some(study) = read_string(&source, dicom_dictionary_std::tags::STUDY_DATE) {
-                assert_eq!(
-                    read_string(&output, dicom_dictionary_std::tags::STUDY_DATE),
-                    dates::shift(&study, offset),
-                    "{name}: the study date was not moved by the patient offset"
-                );
-            }
-            eprintln!("{name}: birth date pinned to the epoch, study date moved with it");
+        }
+        if let Some(study) = read_string(&source, dicom_dictionary_std::tags::STUDY_DATE) {
+            assert_eq!(
+                read_string(&output, dicom_dictionary_std::tags::STUDY_DATE),
+                dates::shift(&study, DATE_OFFSET),
+                "{name}: the study date was not moved by the offset"
+            );
+            eprintln!(
+                "{name}: birth date blanked, study date moved, age {:?}",
+                read_string(&output, dicom_dictionary_std::tags::PATIENT_AGE)
+            );
         }
         eprintln!(
             "{name}: none of its {} distinct dates survived",
@@ -286,8 +298,8 @@ fn real_xml_ecg_files_are_deidentified() {
             "{name}: no identifying value found — is this really a patient file?"
         );
 
-        let output =
-            xml::deidentify(&source, &name, RECORD_ID).unwrap_or_else(|e| panic!("{name}: {e}"));
+        let output = xml::deidentify(&source, &name, RECORD_ID, DATE_OFFSET)
+            .unwrap_or_else(|e| panic!("{name}: {e}"));
         let output_nodes = xml_nodes(&output);
 
         // Nothing outside the allowlist may keep its original value.
@@ -351,50 +363,41 @@ fn real_xml_ecg_files_are_deidentified() {
 /// 1970-01-01, so that the age at acquisition is preserved and the real
 /// calendar dates are gone.
 fn check_dates(name: &str, source: &[(String, String)], output: &[(String, String)]) {
+    // Birth dates are blanked; every other date moves by the offset.
     let dated = |nodes: &[(String, String)]| -> Vec<(String, String)> {
         nodes
             .iter()
-            .filter(|(path, value)| is_kept(path) && dates::parse(value).is_some())
+            .filter(|(path, value)| {
+                is_kept(path) && !xml::is_birth_date_path(path) && dates::parse(value).is_some()
+            })
             .cloned()
             .collect()
     };
     let (src, out) = (dated(source), dated(output));
     assert_eq!(src.len(), out.len(), "{name}: dates appeared or vanished");
 
-    let birth = src
-        .iter()
-        .find(|(path, _)| xml::is_birth_date_path(path))
-        .map(|(_, value)| value.clone());
-    let Some(birth) = birth else {
-        eprintln!("{name}: no birth date, dates left as they are");
-        return;
-    };
-
-    let offset = dates::offset_from_birth_date(&birth).expect("birth date parses");
-    let mut shifted = 0;
+    for (path, value) in output {
+        if xml::is_birth_date_path(path) {
+            assert!(value.trim().is_empty(), "{name}: {path} was not blanked");
+        }
+    }
 
     for ((src_path, src_value), (out_path, out_value)) in src.iter().zip(out.iter()) {
         assert_eq!(
             src_path, out_path,
             "{name}: dates came back in another order"
         );
-        let expected = if xml::is_birth_date_path(src_path) {
-            dates::as_epoch_birth_date(src_value)
-        } else {
-            dates::shift(src_value, offset).expect("shiftable")
-        };
         assert_eq!(
-            out_value, &expected,
-            "{name}: {src_path} was not moved by the patient offset"
+            Some(out_value.clone()),
+            dates::shift(src_value, DATE_OFFSET),
+            "{name}: {src_path} was not moved by the offset"
         );
-        assert_ne!(
-            out_value, src_value,
-            "{name}: {src_path} kept its real value"
-        );
-        shifted += 1;
     }
 
-    eprintln!("{name}: birth date pinned to the epoch, {shifted} dates moved with it");
+    eprintln!(
+        "{name}: birth date blanked, {} dates moved by the offset",
+        src.len()
+    );
 }
 
 /// A node the allowlist lets through with its own value (dates included).
@@ -495,9 +498,17 @@ fn real_files_are_routed_to_the_right_deidentifier() {
             let name = path.file_name().unwrap().to_string_lossy().to_string();
             let source = std::fs::read(&path).expect("readable");
 
-            let result =
-                deidentify_bytes(&source, &name, RECORD_ID, PATIENT_NAME, true, true, true)
-                    .unwrap_or_else(|e| panic!("{name}: {e}"));
+            let result = deidentify_bytes(
+                source.clone(),
+                &name,
+                RECORD_ID,
+                PATIENT_NAME,
+                &patient_keys(),
+                true,
+                true,
+                true,
+            )
+            .unwrap_or_else(|e| panic!("{name}: {e}"));
 
             assert_eq!(result.format_name, expected, "{name} was routed wrong");
             assert_ne!(result.bytes, source, "{name} came back untouched");
@@ -519,8 +530,17 @@ fn a_real_dicomdir_is_skipped() {
     for path in directories {
         let name = path.file_name().unwrap().to_string_lossy().to_string();
         let source = std::fs::read(&path).expect("readable");
-        let error = deidentify_bytes(&source, &name, RECORD_ID, PATIENT_NAME, true, true, true)
-            .expect_err("a DICOMDIR must not be uploaded");
+        let error = deidentify_bytes(
+            source.clone(),
+            &name,
+            RECORD_ID,
+            PATIENT_NAME,
+            &patient_keys(),
+            true,
+            true,
+            true,
+        )
+        .expect_err("a DICOMDIR must not be uploaded");
         assert!(error.starts_with("SKIP:"), "{name}: got {error}");
         eprintln!("{name}: recognized as a DICOMDIR and skipped");
     }
@@ -579,10 +599,11 @@ fn real_dicom_files_are_still_recognized_without_their_header() {
             "{name}: not recognized as DICOM once the header is stripped"
         );
         let output = deidentify_bytes(
-            &bare,
+            bare.clone(),
             "IMG0001.vim",
             RECORD_ID,
             PATIENT_NAME,
+            &patient_keys(),
             true,
             true,
             true,
@@ -621,7 +642,7 @@ fn the_leaks_found_in_the_real_recording_are_closed() {
     }
 
     let source = std::fs::read(&path).expect("readable");
-    let output = xml::deidentify(&source, "ECG.xml", RECORD_ID).expect("deidentified");
+    let output = xml::deidentify(&source, "ECG.xml", RECORD_ID, DATE_OFFSET).expect("deidentified");
     let text = String::from_utf8(output).expect("utf-8");
 
     // Values a denylist let through, each found in this recording.

@@ -3,6 +3,10 @@ use uuid::Uuid;
 const SCHILLER_MAGIC_NUMBER: &[u8] = &[
     0x00, 0x55, 0xDA, 0xBA, 0x01, 0x00, 0x63, 0x00, 0x60, 0x43, 0x54, 0x43, 0x41, 0x43, 0x55, 0x10,
 ];
+/// The one header byte that varies between recordings (0x00 and 0x01 are seen,
+/// with the same layout).
+const VARYING_MAGIC_BYTE: usize = 5;
+const MAX_VARYING_MAGIC_VALUE: u8 = 0x01;
 /// Voice annotations recorded by the technician: wiped wholesale, since they
 /// routinely name the patient out loud.
 const AUDIO_START: usize = 0x1800;
@@ -24,9 +28,7 @@ const XOR_KEY: u8 = 0x8A;
 /// Every offset touched by the transform sits below `AUDIO_END`, so a buffer
 /// long enough to hold the audio section is long enough for all of them.
 pub fn validate(input_bytes: &[u8]) -> Result<(), String> {
-    if input_bytes.len() < SCHILLER_MAGIC_NUMBER.len()
-        || &input_bytes[..SCHILLER_MAGIC_NUMBER.len()] != SCHILLER_MAGIC_NUMBER
-    {
+    if !has_magic_number(input_bytes) {
         return Err("input is not a Schiller Holter file".to_string());
     }
 
@@ -37,15 +39,50 @@ pub fn validate(input_bytes: &[u8]) -> Result<(), String> {
     Ok(())
 }
 
+fn has_magic_number(input_bytes: &[u8]) -> bool {
+    input_bytes.len() >= SCHILLER_MAGIC_NUMBER.len()
+        && input_bytes
+            .iter()
+            .zip(SCHILLER_MAGIC_NUMBER)
+            .enumerate()
+            .all(|(index, (byte, expected))| {
+                byte == expected
+                    || (index == VARYING_MAGIC_BYTE && *byte <= MAX_VARYING_MAGIC_VALUE)
+            })
+}
+
+/// Who the recording belongs to: the patient id field, the only identity whose
+/// place in the format is known. Read before deidentification, for the
+/// pseudonym; see [`crate::dicom::Identity`].
+pub fn identity(input_bytes: &[u8]) -> Result<crate::dicom::Identity, String> {
+    validate(input_bytes)?;
+    let nip: String = input_bytes[PATIENT_ID_OFFSET..PATIENT_ID_OFFSET + PATIENT_ID_LENGTH]
+        .iter()
+        // The field is padded with the raw filler byte, or left zeroed.
+        .take_while(|byte| **byte != 0x00 && **byte != FILLER_BYTE)
+        .map(|byte| byte ^ XOR_KEY)
+        .take_while(|byte| byte.is_ascii_graphic() || *byte == b' ')
+        .map(char::from)
+        .collect();
+    let nip = nip.trim().to_string();
+    Ok(crate::dicom::Identity {
+        nip: (!nip.is_empty()).then_some(nip),
+        ..Default::default()
+    })
+}
+
 /// Strip patient identity from a Schiller Holter container.
 ///
 /// `record_id` is written into the patient id field; when it is blank a random
 /// numeric id is generated so the field never keeps its original value.
-pub fn deidentify(input_bytes: &[u8], record_id: &str) -> Result<Vec<u8>, String> {
-    validate(input_bytes).map_err(|e| format!("SKIP: {e}"))?;
+///
+/// Takes ownership and works in place: these files run to hundreds of
+/// megabytes, and every copy counts against the WASM memory.
+pub fn deidentify(input_bytes: Vec<u8>, record_id: &str) -> Result<Vec<u8>, String> {
+    validate(&input_bytes).map_err(|e| format!("SKIP: {e}"))?;
 
     let mut container = Deidentified {
-        buffer: input_bytes.to_vec(),
+        buffer: input_bytes,
         anonymous_id: record_id.trim().to_string(),
     };
     container.anonymize()?;

@@ -4,7 +4,8 @@ use common::*;
 use dicom_deid::xml::{self, XmlOutcome};
 
 fn deidentify(source: &str, record_id: &str) -> String {
-    let output = xml::deidentify(source.as_bytes(), "ecg.xml", record_id).expect("deidentified");
+    let output = xml::deidentify(source.as_bytes(), "ecg.xml", record_id, DATE_OFFSET)
+        .expect("deidentified");
     String::from_utf8(output).expect("output is utf-8")
 }
 
@@ -226,7 +227,7 @@ fn preserves_a_utf8_byte_order_mark() {
     let mut source = Vec::from(b"\xef\xbb\xbf".as_slice());
     source.extend_from_slice(hl7_v3_fixture().as_bytes());
 
-    let output = xml::deidentify(&source, "ecg.xml", "REC-42").expect("deidentified");
+    let output = xml::deidentify(&source, "ecg.xml", "REC-42", DATE_OFFSET).expect("deidentified");
 
     assert!(output.starts_with(b"\xef\xbb\xbf"));
     assert!(xml::validate(&output, "ecg.xml").is_ok());
@@ -372,6 +373,7 @@ fn rejects_a_dialect_the_allowlist_does_not_cover() {
         br#"<AnnotatedECG xmlns="urn:hl7-org:v3"><trialSubject/><vendorSignal>1 2 3</vendorSignal></AnnotatedECG>"#,
         "ecg.xml",
         "REC-42",
+        DATE_OFFSET,
     )
     .unwrap_err();
 
@@ -380,15 +382,16 @@ fn rejects_a_dialect_the_allowlist_does_not_cover() {
 }
 
 #[test]
-fn pins_the_birth_date_to_the_epoch() {
+fn blanks_the_birth_date() {
+    // Shifted like the other dates, it would give the exact age back.
     let output = deidentify(&hl7_v3_fixture(), "REC-42");
 
-    assert!(output.contains(r#"<birthTime value="19700101"/>"#));
+    assert!(output.contains(r#"<birthTime value=""/>"#), "got {output}");
     assert!(!output.contains("19540212"));
 }
 
 #[test]
-fn a_hyphenated_birth_date_keeps_its_notation() {
+fn a_hyphenated_birth_date_is_blanked_too() {
     let output = deidentify(
         r#"<AnnotatedECG xmlns="urn:hl7-org:v3"><trialSubject/>
               <subject><dateofbirth>1954-02-12</dateofbirth></subject>
@@ -398,24 +401,17 @@ fn a_hyphenated_birth_date_keeps_its_notation() {
     );
 
     assert!(
-        output.contains("<dateofbirth>1970-01-01</dateofbirth>"),
+        output.contains("<dateofbirth></dateofbirth>"),
         "got {output}"
     );
 }
 
 #[test]
-fn shifts_the_acquisition_so_the_age_is_preserved() {
-    // The fixture is born 1954-02-12 and recorded 2024-01-15. After the shift
-    // the birth date is 1970-01-01, so the acquisition must sit exactly the
-    // same number of days after it: the age at acquisition is unchanged.
+fn the_acquisition_moves_by_exactly_the_offset() {
     let output = deidentify(&hl7_v3_fixture(), "REC-42");
     let shifted = timestamp_after(&output, "effectiveTime value=\"");
 
-    assert_eq!(
-        days_between("19700101", &shifted[..8]),
-        days_between("19540212", "20240115"),
-        "age at acquisition changed (shifted to {shifted})"
-    );
+    assert_eq!(days_between("20240115", &shifted[..8]), DATE_OFFSET);
     assert!(shifted.ends_with("093000"), "the time of day must survive");
     assert!(!output.contains("20240115"), "the real date leaked");
 }
@@ -438,9 +434,8 @@ fn moves_every_date_by_the_same_offset() {
 }
 
 #[test]
-fn blanks_dates_when_the_document_has_no_birth_date() {
-    // With no birth date there is no offset to apply, and an unshifted
-    // acquisition date would simply be the real one.
+fn dates_move_even_without_a_birth_date() {
+    // The offset comes from the pseudonym, not from the birth date.
     let output = deidentify(
         r#"<?xml version="1.0"?>
 <AnnotatedECG xmlns="urn:hl7-org:v3">
@@ -450,12 +445,50 @@ fn blanks_dates_when_the_document_has_no_birth_date() {
 </AnnotatedECG>"#,
         "REC-42",
     );
+    let shifted = timestamp_after(&output, "effectiveTime value=\"");
 
-    assert!(
-        !output.contains("20240115"),
-        "the real acquisition date leaked"
-    );
+    assert_eq!(days_between("20240115", &shifted[..8]), DATE_OFFSET);
     assert!(output.contains(r#"extension="REC-42""#), "got {output}");
+}
+
+// --- Identity ------------------------------------------------------------------
+
+#[test]
+fn the_identity_is_read_from_the_standard_place_first() {
+    let identity = xml::identity(
+        br#"<AnnotatedECG xmlns="urn:hl7-org:v3"><componentOf><subject><trialSubject>
+              <id root="1.2.3" extension="0105883586"/>
+              <subjectDemographicPerson>
+                <name><family>DUPONT</family><given>Marie</given></name>
+                <PatientID>105883587</PatientID>
+                <birthTime value="19540212"/>
+              </subjectDemographicPerson>
+            </trialSubject></subject></componentOf></AnnotatedECG>"#,
+    );
+
+    assert_eq!(identity.nip.as_deref(), Some("0105883586"));
+    assert_eq!(identity.name.as_deref(), Some("DUPONT^Marie"));
+    assert_eq!(identity.birth_date.as_deref(), Some("19540212"));
+}
+
+#[test]
+fn a_name_written_as_plain_text_is_read_too() {
+    let identity = xml::identity(
+        br#"<AnnotatedECG xmlns="urn:hl7-org:v3"><componentOf><subject><trialSubject>
+              <id root="1.2.3" extension="0105883586"/>
+              <subjectDemographicPerson><name>DUPONT MARIE</name></subjectDemographicPerson>
+            </trialSubject></subject></componentOf></AnnotatedECG>"#,
+    );
+
+    assert_eq!(identity.name.as_deref(), Some("DUPONT MARIE"));
+}
+
+#[test]
+fn a_vendor_patient_id_is_the_fallback() {
+    let identity = xml::identity(hl7_v3_fixture().as_bytes());
+
+    assert_eq!(identity.nip.as_deref(), Some("PHI-PATIENT-0001"));
+    assert_eq!(identity.name.as_deref(), Some("Dupont^Marie"));
 }
 
 #[test]
@@ -525,6 +558,7 @@ fn a_document_with_no_subject_element_is_refused() {
             </AnnotatedECG>"#,
         "ecg.xml",
         "REC-42",
+        DATE_OFFSET,
     )
     .unwrap_err();
 

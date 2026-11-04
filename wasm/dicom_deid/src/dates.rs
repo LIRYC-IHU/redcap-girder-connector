@@ -1,18 +1,10 @@
-//! Date policy shared by every deidentifier.
+//! Date arithmetic shared by every deidentifier.
 //!
-//! Birth dates are pinned to 1970-01-01 and every other date in the file is
-//! moved by the same offset, so `exam - birth` — the patient's age at
-//! acquisition — is preserved to the day while the real calendar dates are
-//! destroyed. The offset is derived from the patient's own birth date, so it
-//! differs per patient and cannot be recovered from the output: reversing a
-//! shifted date needs the birth date, which is exactly what the file no longer
-//! carries.
-//!
-//! A file without a birth date gets no shift at all — there is no age to
-//! preserve — and its dates are handled by the format's own fallback.
-
-/// Every deidentified birth date becomes this.
-pub const EPOCH_BIRTH_DATE: &str = "19700101";
+//! Every date of a patient's files moves by the same number of days, derived
+//! from the patient's pseudonym (see [`crate::pseudonym`]): intervals between
+//! examinations are exact, while the calendar — era, season, weekday — is gone.
+//! Birth dates are not shifted but blanked, since a shifted birth date would
+//! give the exact age back by subtraction; the age is written in years instead.
 
 /// Plausible acquisition years; anything outside is not treated as a date.
 const MIN_YEAR: i64 = 1850;
@@ -98,12 +90,6 @@ pub fn render(days: Days, format: DateFormat, remainder: &str) -> String {
     }
 }
 
-/// Days to add to every date so that the birth date lands on 1970-01-01.
-pub fn offset_from_birth_date(birth_date: &str) -> Option<i64> {
-    let birth = parse(birth_date)?;
-    Some(-birth.days.0)
-}
-
 /// Shift one value by `offset`, or return `None` if it is not a date.
 pub fn shift(value: &str, offset: i64) -> Option<String> {
     let parsed = parse(value)?;
@@ -114,12 +100,37 @@ pub fn shift(value: &str, offset: i64) -> Option<String> {
     ))
 }
 
-/// Write a birth date as 1970-01-01 in the notation the source used.
-pub fn as_epoch_birth_date(value: &str) -> String {
-    match parse(value) {
-        Some(parsed) => render(Days(0), parsed.format, parsed.remainder),
-        None => EPOCH_BIRTH_DATE.to_string(),
+/// Age between two dates as whole years, months and days, the way people count
+/// it: a birthday not yet reached this year does not count. `None` when either
+/// is not a date or `at` comes before `birth`.
+pub fn age(birth: &str, at: &str) -> Option<Age> {
+    let birth = parse(birth)?;
+    let at = parse(at)?;
+    if at.days.0 < birth.days.0 {
+        return None;
     }
+    let (by, bm, bd) = civil_from_days(birth.days.0);
+    let (ay, am, ad) = civil_from_days(at.days.0);
+
+    let mut months = (ay - by) * 12 + (am - bm);
+    if ad < bd {
+        months -= 1;
+    }
+    Some(Age {
+        years: months.div_euclid(12),
+        months,
+        days: at.days.0 - birth.days.0,
+    })
+}
+
+/// See [`age`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Age {
+    pub years: i64,
+    /// Whole months in total, not the remainder after the years.
+    pub months: i64,
+    /// Days in total.
+    pub days: i64,
 }
 
 fn days_in_month(year: i64, month: i64) -> i64 {

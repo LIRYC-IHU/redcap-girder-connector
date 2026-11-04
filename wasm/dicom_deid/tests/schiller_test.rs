@@ -28,12 +28,12 @@ fn rejects_a_truncated_container_instead_of_panicking() {
     truncated[..SCHILLER_MAGIC_NUMBER.len()].copy_from_slice(&SCHILLER_MAGIC_NUMBER);
 
     assert!(schiller::validate(&truncated).is_err());
-    assert!(schiller::deidentify(&truncated, "REC-42").is_err());
+    assert!(schiller::deidentify(truncated, "REC-42").is_err());
 }
 
 #[test]
 fn writes_the_record_id_into_the_patient_id_field() {
-    let output = schiller::deidentify(&schiller_fixture(), "REC-42").expect("deidentified");
+    let output = schiller::deidentify(schiller_fixture(), "REC-42").expect("deidentified");
 
     let stored = schiller_decode_field(
         &output,
@@ -46,7 +46,7 @@ fn writes_the_record_id_into_the_patient_id_field() {
 #[test]
 fn truncates_a_record_id_longer_than_the_field() {
     let long_id = "A".repeat(40);
-    let output = schiller::deidentify(&schiller_fixture(), &long_id).expect("deidentified");
+    let output = schiller::deidentify(schiller_fixture(), &long_id).expect("deidentified");
 
     let stored = schiller_decode_field(
         &output,
@@ -59,7 +59,7 @@ fn truncates_a_record_id_longer_than_the_field() {
 
 #[test]
 fn wipes_the_cleartext_patient_block() {
-    let output = schiller::deidentify(&schiller_fixture(), "REC-42").expect("deidentified");
+    let output = schiller::deidentify(schiller_fixture(), "REC-42").expect("deidentified");
 
     assert!(
         !contains(&output, SCHILLER_PATIENT_NAME),
@@ -78,7 +78,7 @@ fn wipes_the_cleartext_patient_block() {
 
 #[test]
 fn wipes_the_voice_annotation_section() {
-    let output = schiller::deidentify(&schiller_fixture(), "REC-42").expect("deidentified");
+    let output = schiller::deidentify(schiller_fixture(), "REC-42").expect("deidentified");
 
     // Voice annotations are recorded by the technician and routinely name the
     // patient, so the whole section is zeroed rather than filtered.
@@ -93,13 +93,13 @@ fn wipes_the_voice_annotation_section() {
 
 #[test]
 fn regenerates_the_device_uuid() {
-    let output = schiller::deidentify(&schiller_fixture(), "REC-42").expect("deidentified");
+    let output = schiller::deidentify(schiller_fixture(), "REC-42").expect("deidentified");
 
     let uuid = String::from_utf8_lossy(&output[SCHILLER_UUID_OFFSET..SCHILLER_UUID_OFFSET + 38]);
     assert!(uuid.starts_with('{') && uuid.ends_with('}'), "got {uuid}");
     assert_ne!(uuid, "{AAAAAAAA-BBBB-CCCC-DDDD-EEEEEEEEEEEE}");
 
-    let mut second = schiller::deidentify(&schiller_fixture(), "REC-42").expect("deidentified");
+    let mut second = schiller::deidentify(schiller_fixture(), "REC-42").expect("deidentified");
     second.truncate(SCHILLER_UUID_OFFSET + 38);
     assert_ne!(
         uuid,
@@ -111,7 +111,7 @@ fn regenerates_the_device_uuid() {
 #[test]
 fn keeps_the_container_structure_intact() {
     let input = schiller_fixture();
-    let output = schiller::deidentify(&input, "REC-42").expect("deidentified");
+    let output = schiller::deidentify(input.clone(), "REC-42").expect("deidentified");
 
     assert_eq!(output.len(), input.len(), "file size must not change");
     assert_eq!(
@@ -126,7 +126,7 @@ fn keeps_the_container_structure_intact() {
 
 #[test]
 fn falls_back_to_a_synthetic_id_when_no_record_id_is_given() {
-    let output = schiller::deidentify(&schiller_fixture(), "   ").expect("deidentified");
+    let output = schiller::deidentify(schiller_fixture(), "   ").expect("deidentified");
 
     let stored = schiller_decode_field(
         &output,
@@ -136,4 +136,37 @@ fn falls_back_to_a_synthetic_id_when_no_record_id_is_given() {
     assert_eq!(stored.len(), SCHILLER_PATIENT_ID_LENGTH);
     assert!(stored.chars().all(|c| c.is_ascii_digit()));
     assert_ne!(stored, SCHILLER_PATIENT_ID);
+}
+
+#[test]
+fn the_header_byte_that_varies_between_recordings_is_tolerated() {
+    // Recordings with 0x01 there have the same layout; refusing them dropped the
+    // whole Holter from the upload.
+    let mut fixture = schiller_fixture();
+    fixture[5] = 0x01;
+
+    assert!(schiller::validate(&fixture).is_ok());
+    let output = schiller::deidentify(fixture, "REC-42").expect("deidentified");
+    assert_eq!(output[5], 0x01, "the header is kept as it was");
+    assert_eq!(
+        schiller_decode_field(
+            &output,
+            SCHILLER_PATIENT_ID_OFFSET,
+            SCHILLER_PATIENT_ID_LENGTH
+        ),
+        "REC-42"
+    );
+}
+
+#[test]
+fn any_other_header_byte_is_still_refused() {
+    for (index, value) in [(5, 0x02), (4, 0x00), (0, 0x01)] {
+        let mut fixture = schiller_fixture();
+        fixture[index] = value;
+
+        assert!(
+            schiller::validate(&fixture).is_err(),
+            "byte {index} = {value:#x}"
+        );
+    }
 }

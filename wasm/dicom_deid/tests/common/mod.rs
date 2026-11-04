@@ -10,6 +10,19 @@ use dicom_core::{DataElement, PrimitiveValue, VR};
 use dicom_dictionary_std::tags;
 use dicom_object::{FileMetaTableBuilder, InMemDicomObject};
 
+/// The date offset the tests deidentify with; in production it comes from the
+/// patient's pseudonym. Within the real range, 50 to 100 years back.
+pub const DATE_OFFSET: i64 = -20_000;
+
+/// The keys the tests deidentify with; in production they come from the
+/// patient's pseudonym.
+pub fn patient_keys() -> dicom_deid::PatientKeys {
+    dicom_deid::PatientKeys {
+        date_offset_days: DATE_OFFSET,
+        uid_key: [0x5A; 32],
+    }
+}
+
 /// Identifying values planted in the DICOM fixture.
 pub const DICOM_PATIENT_NAME: &str = "DOE^JOHN^^^";
 pub const DICOM_PATIENT_ID: &str = "PHI-PATIENT-0001";

@@ -4,7 +4,7 @@
 mod common;
 
 use common::*;
-use dicom_deid::deidentify_bytes;
+use dicom_deid::{deidentify_bytes, inspect_bytes};
 
 const ALL: (bool, bool, bool) = (true, true, true);
 
@@ -15,10 +15,11 @@ fn run(
     (dicom, xml, schiller): (bool, bool, bool),
 ) -> Result<dicom_deid::DeidentifiedFile, String> {
     deidentify_bytes(
-        bytes,
+        bytes.to_vec(),
         file_name,
         record_id,
         "MY PROJECT^REC-42",
+        &patient_keys(),
         dicom,
         xml,
         schiller,
@@ -97,10 +98,11 @@ fn falls_back_to_a_placeholder_when_the_record_has_no_id() {
     // Data entry forms can be open on an unsaved record; the file must still be
     // deidentified rather than carrying its original identifiers.
     let output = deidentify_bytes(
-        hl7_v3_fixture().as_bytes(),
+        hl7_v3_fixture().into_bytes(),
         "ecg.xml",
         "  ",
         "",
+        &patient_keys(),
         true,
         true,
         true,
@@ -177,4 +179,101 @@ fn an_unsupported_xml_is_refused_even_with_deidentification_disabled() {
     .unwrap_err();
 
     assert!(!error.starts_with("SKIP:"), "got {error}");
+}
+
+// --- Inspection --------------------------------------------------------------
+
+#[test]
+fn inspection_reads_the_nip_and_what_to_show_the_uploader() {
+    let inspection = inspect_bytes(&dicom_fixture(), "image.dcm", true, true, true).unwrap();
+
+    assert_eq!(inspection.format_name, "dicom");
+    assert!(inspection.deidentified);
+    assert_eq!(inspection.nip, "PHI-PATIENT-0001");
+    assert_eq!(inspection.raw_nip, "PHI-PATIENT-0001");
+    assert_eq!(inspection.family_name, "DOE");
+    assert_eq!(inspection.given_name, "JOHN");
+    assert_eq!(inspection.birth_date, "12/02/1954");
+}
+
+#[test]
+fn inspection_reads_the_dicom_series_for_the_summary() {
+    let inspection = inspect_bytes(&dicom_fixture(), "image.dcm", true, true, true).unwrap();
+
+    assert_eq!(inspection.series_uid, DICOM_SERIES_UID);
+    assert_eq!(inspection.modality, "XA");
+}
+
+#[test]
+fn inspection_keeps_the_nip_as_written_and_normalized() {
+    let bytes = dicom_fixture_edited(|object| {
+        object.put(dicom_core::DataElement::new(
+            dicom_dictionary_std::tags::PATIENT_ID,
+            dicom_core::VR::LO,
+            dicom_core::PrimitiveValue::from("0001234567"),
+        ));
+    });
+    let inspection = inspect_bytes(&bytes, "image.dcm", true, true, true).unwrap();
+
+    assert_eq!(inspection.raw_nip, "0001234567");
+    assert_eq!(inspection.nip, "1234567");
+}
+
+#[test]
+fn an_ecg_has_no_series() {
+    let inspection =
+        inspect_bytes(hl7_v3_fixture().as_bytes(), "ecg.xml", true, true, true).unwrap();
+
+    assert_eq!(inspection.format_name, "xml");
+    assert_eq!(inspection.series_uid, "");
+    assert_eq!(inspection.family_name, "Dupont");
+    assert_eq!(inspection.given_name, "Marie");
+}
+
+#[test]
+fn inspection_normalizes_the_nip_the_way_the_pseudonym_does() {
+    let inspection = inspect_bytes(&schiller_fixture(), "holter.bin", true, true, true).unwrap();
+
+    assert_eq!(inspection.format_name, "schiller");
+    assert_eq!(
+        Some(inspection.nip),
+        dicom_deid::pseudonym::normalize_nip(SCHILLER_PATIENT_ID)
+    );
+}
+
+#[test]
+fn inspection_says_when_a_format_will_not_be_deidentified() {
+    let inspection = inspect_bytes(&dicom_fixture(), "image.dcm", false, true, true).unwrap();
+
+    assert!(
+        !inspection.deidentified,
+        "an opted-out format needs no pseudonym"
+    );
+}
+
+#[test]
+fn inspection_sets_aside_what_deidentification_would() {
+    assert!(
+        inspect_bytes(b"not a medical file", "notes.txt", true, true, true)
+            .unwrap_err()
+            .starts_with("SKIP:")
+    );
+    assert_eq!(
+        inspect_bytes(&dicomdir_fixture(), "DICOMDIR", true, true, true).unwrap_err(),
+        dicom_deid::dicom::DICOMDIR_SKIP_REASON
+    );
+}
+
+#[test]
+fn a_file_without_patient_id_has_an_empty_nip() {
+    let bytes = dicom_fixture_edited(|object| {
+        object.remove_element(dicom_dictionary_std::tags::PATIENT_ID);
+    });
+
+    assert_eq!(
+        inspect_bytes(&bytes, "image.dcm", true, true, true)
+            .unwrap()
+            .nip,
+        ""
+    );
 }

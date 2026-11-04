@@ -18,13 +18,29 @@ use dicom_transfer_syntax_registry::entries::{
     EXPLICIT_VR_LITTLE_ENDIAN, IMPLICIT_VR_LITTLE_ENDIAN,
 };
 
-use crate::dates;
+use crate::{dates, pseudonym, PatientKeys};
 
 /// UID root registered for IHU Liryc, used to derive the anonymized UIDs.
 const UID_ROOT: &str = "1.2.826.0.1.3680043.10.543";
 
-/// Value written into `DeidentificationMethod` (0012,0063).
+/// Root of the UIDs the DICOM standard itself defines (SOP classes, transfer
+/// syntaxes): they say nothing about a patient.
+const DICOM_STANDARD_UID_ROOT: &str = "1.2.840.10008.";
+
+/// Value written into `DeidentificationMethod` (0012,0063), followed by the
+/// release version.
 const DEIDENTIFICATION_METHOD: &str = "IHU LIRYC REDCAP PLUGIN";
+
+/// Release of the module this deidentifier is built for, read from the
+/// repository's `VERSION` file at compile time. The packaging script builds
+/// the WASM from the same file, so a deidentified file names the rules it went
+/// through: the date policy, for one, has changed between releases.
+const RELEASE_VERSION: &str = include_str!("../../../VERSION");
+
+/// `IHU LIRYC REDCAP PLUGIN v2.0.0`, for instance.
+pub fn deidentification_method() -> String {
+    format!("{DEIDENTIFICATION_METHOD} v{}", RELEASE_VERSION.trim())
+}
 
 const PREAMBLE_LENGTH: usize = 128;
 const DICM_MAGIC_CODE: &[u8] = b"DICM";
@@ -214,10 +230,54 @@ pub fn validate(input_bytes: &[u8]) -> Result<DicomKind, String> {
 pub const DICOMDIR_SKIP_REASON: &str =
     "SKIP: DICOMDIR is the index of the original media, not data; it is not uploaded";
 
+/// Who a file belongs to, read before deidentification: the NIP feeds the
+/// pseudonym, the name and birth date are shown to the uploader for
+/// confirmation and never leave the browser.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct Identity {
+    pub nip: Option<String>,
+    /// A DICOM person name: `FAMILY^GIVEN^…`, or the whole name as text.
+    pub name: Option<String>,
+    pub birth_date: Option<String>,
+    /// The DICOM series the file belongs to, for the transfer summary.
+    pub series: Option<Series>,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct Series {
+    pub uid: String,
+    pub modality: String,
+    pub description: String,
+}
+
+/// Read up to the pixel data only: a batch can hold thousands of images, and
+/// identity and series sit in the header.
+pub fn identity(input_bytes: &[u8]) -> Result<Identity, String> {
+    let stream = dicom_stream(input_bytes)?;
+    let object = dicom_object::OpenFileOptions::new()
+        .read_until(tags::PIXEL_DATA)
+        .from_reader(Cursor::new(stream.as_ref()))
+        .map_err(|e| format!("input is not a valid DICOM file: {e}"))?;
+    let series = read_string(&object, tags::SERIES_INSTANCE_UID).map(|uid| Series {
+        uid,
+        modality: read_string(&object, tags::MODALITY).unwrap_or_default(),
+        description: read_string(&object, tags::SERIES_DESCRIPTION).unwrap_or_default(),
+    });
+    Ok(Identity {
+        nip: read_string(&object, tags::PATIENT_ID),
+        name: read_string(&object, tags::PATIENT_NAME),
+        birth_date: read_string(&object, tags::PATIENT_BIRTH_DATE),
+        series,
+    })
+}
+
+/// `keys` come from the patient's pseudonym: every date of the file moves by the
+/// offset and every UID is rewritten under the key, see [`rewrite_elements`].
 pub fn deidentify(
     input_bytes: &[u8],
     record_id: &str,
     patient_name: &str,
+    keys: &PatientKeys,
 ) -> Result<Vec<u8>, String> {
     let stream = dicom_stream(input_bytes).map_err(|e| format!("SKIP: {e}"))?;
     let mut source = dicom_object::from_reader(Cursor::new(stream.as_ref()))
@@ -226,30 +286,28 @@ pub fn deidentify(
         return Err(DICOMDIR_SKIP_REASON.to_string());
     }
 
-    // Dates are settled before the anonymizer runs, see [`DatePolicy`]. Every
-    // shifted date is then marked `Keep`, so the anonymizer neither moves it a
-    // second time nor removes it.
-    let policy = DatePolicy::for_source(&source);
-    let defaults = anonymizer_config().build();
-    let mut shifted_tags = BTreeSet::new();
-    let rewritten = rewrite_dates(&mut source, policy, &defaults, &mut shifted_tags);
+    // Computed on the real dates, before they move.
+    let patient_age = age_at_acquisition(&source);
 
-    let prepared: Cow<'_, [u8]> = if rewritten {
-        let mut bytes = Vec::with_capacity(stream.len());
-        source
-            .write_all(&mut bytes)
-            .map_err(|e| format!("SKIP: DICOM write failed: {e}"))?;
-        // `write_all` emits the preamble as well; the anonymizer expects `DICM` first.
-        Cow::Owned(bytes.split_off(PREAMBLE_LENGTH))
-    } else {
-        Cow::Borrowed(stream.as_ref())
-    };
+    // Dates and UIDs are settled before the anonymizer runs. Every rewritten
+    // element is then marked `Keep`, so the anonymizer neither changes it a
+    // second time nor removes it.
+    let defaults = anonymizer_config().build();
+    let mut kept_tags = BTreeSet::new();
+    rewrite_elements(&mut source, keys, &defaults, &mut kept_tags);
+
+    let mut bytes = Vec::with_capacity(stream.len());
+    source
+        .write_all(&mut bytes)
+        .map_err(|e| format!("SKIP: DICOM write failed: {e}"))?;
+    // `write_all` emits the preamble as well; the anonymizer expects `DICM` first.
+    let prepared = bytes.split_off(PREAMBLE_LENGTH);
 
     // The anonymizer only visits elements that already exist in the source, so
     // the REDCap identity is written explicitly afterwards: a file missing
     // `PatientID` (or the deidentification stamp) would otherwise come out
     // without either.
-    let config = shifted_tags
+    let config = kept_tags
         .into_iter()
         .fold(anonymizer_config(), |builder, tag| {
             builder.tag_action(tag, Action::Keep)
@@ -260,7 +318,7 @@ pub fn deidentify(
     let anonymizer = Anonymizer::new(processor);
 
     let mut anonymized = anonymizer
-        .anonymize(Cursor::new(prepared.as_ref()))
+        .anonymize(Cursor::new(prepared.as_slice()))
         .map_err(|e| format!("SKIP: DICOM anonymization failed: {e}"))?
         .anonymized;
 
@@ -274,15 +332,39 @@ pub fn deidentify(
         VR::PN,
         PrimitiveValue::from(patient_name),
     ));
+    // Type 2 in the Patient module: present, and empty.
+    anonymized.put(DataElement::new(
+        tags::PATIENT_BIRTH_DATE,
+        VR::DA,
+        PrimitiveValue::Empty,
+    ));
+    match patient_age {
+        Some(age) => {
+            anonymized.put(DataElement::new(
+                tags::PATIENT_AGE,
+                VR::AS,
+                PrimitiveValue::from(age),
+            ));
+        }
+        None => {
+            anonymized.remove_element(tags::PATIENT_AGE);
+        }
+    }
     anonymized.put(DataElement::new(
         tags::DEIDENTIFICATION_METHOD,
         VR::LO,
-        PrimitiveValue::from(DEIDENTIFICATION_METHOD),
+        PrimitiveValue::from(deidentification_method()),
     ));
     anonymized.put(DataElement::new(
         tags::PATIENT_IDENTITY_REMOVED,
         VR::CS,
         PrimitiveValue::from("YES"),
+    ));
+    // PS3.15, Retain Longitudinal Temporal Information with Modified Dates.
+    anonymized.put(DataElement::new(
+        tags::LONGITUDINAL_TEMPORAL_INFORMATION_MODIFIED,
+        VR::CS,
+        PrimitiveValue::from("MODIFIED"),
     ));
 
     let mut out = Vec::new();
@@ -297,42 +379,60 @@ fn anonymizer_config() -> ConfigBuilder {
     ConfigBuilder::default().uid_root(UidRoot(UID_ROOT.into()))
 }
 
-/// How the dates of one file are deidentified.
+/// Dates the age is computed at, best first: the study, then the acquisition.
+const ACQUISITION_DATE_TAGS: &[Tag] = &[
+    tags::STUDY_DATE,
+    tags::SERIES_DATE,
+    tags::ACQUISITION_DATE,
+    tags::CONTENT_DATE,
+    tags::ACQUISITION_DATE_TIME,
+];
+
+/// `PatientAge` (an `AS`): years from two years old, months below, weeks below
+/// two months. Days are never given: for a newborn they would be nearly as
+/// precise as the dates that were removed.
 ///
-/// The anonymizer's own date handling is not used. Its hash shift is keyed on a
-/// public hash of `PatientID`, leaves the date untouched when that is missing,
-/// and aborts the whole file over a value it cannot parse; and any date tag it
-/// has no rule for is kept as-is. So every `DA` and `DT` element, sequences
-/// included, is settled here before the anonymizer runs.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum DatePolicy {
-    /// The birth date is known: every date moves by this offset, so the birth
-    /// date lands on 1970-01-01 and the age at each acquisition is exact.
-    Shift(i64),
-    /// No usable birth date: there is no age to preserve and nothing to derive
-    /// a shift from, so every date is removed.
-    Remove,
+/// Without a birth date, a well-formed `PatientAge` already in the file is kept.
+fn age_at_acquisition(source: &DefaultDicomObject) -> Option<String> {
+    let birth = read_string(source, tags::PATIENT_BIRTH_DATE);
+    let at = ACQUISITION_DATE_TAGS
+        .iter()
+        .find_map(|tag| read_string(source, *tag));
+
+    if let (Some(birth), Some(at)) = (birth, at) {
+        if let Some(age) = dates::age(&birth, &at) {
+            return Some(if age.years >= 2 {
+                format!("{:03}Y", age.years.min(999))
+            } else if age.days >= 8 * 7 {
+                format!("{:03}M", age.months)
+            } else {
+                format!("{:03}W", age.days / 7)
+            });
+        }
+    }
+
+    read_string(source, tags::PATIENT_AGE).filter(|age| is_age_string(age))
 }
 
-impl DatePolicy {
-    fn for_source(source: &DefaultDicomObject) -> Self {
-        read_string(source, tags::PATIENT_BIRTH_DATE)
-            .and_then(|birth_date| dates::offset_from_birth_date(&birth_date))
-            .map_or(Self::Remove, Self::Shift)
-    }
+fn is_age_string(value: &str) -> bool {
+    let bytes = value.as_bytes();
+    bytes.len() == 4
+        && bytes[..3].iter().all(u8::is_ascii_digit)
+        && matches!(bytes[3], b'D' | b'W' | b'M' | b'Y')
 }
 
 /// What happens to one date element before the anonymizer sees it.
 enum DateEdit {
     Leave,
-    Replace(String),
+    Replace(PrimitiveValue),
     Remove,
 }
 
-fn date_edit(value: &str, policy: DatePolicy) -> DateEdit {
-    let DatePolicy::Shift(offset) = policy else {
-        return DateEdit::Remove;
-    };
+fn date_edit(tag: Tag, value: &str, offset: i64) -> DateEdit {
+    // Shifted like the others, the birth date would give the exact age back.
+    if tag == tags::PATIENT_BIRTH_DATE {
+        return DateEdit::Replace(PrimitiveValue::Empty);
+    }
 
     let values: Vec<&str> = value
         .split('\\')
@@ -347,24 +447,59 @@ fn date_edit(value: &str, policy: DatePolicy) -> DateEdit {
         .map(|part| dates::shift(part, offset))
         .collect::<Option<Vec<_>>>()
         .map_or(DateEdit::Remove, |shifted| {
-            DateEdit::Replace(shifted.join("\\"))
+            DateEdit::Replace(PrimitiveValue::from(shifted.join("\\")))
         })
 }
 
-/// Apply `policy` to every date in `object`, descending into sequences.
-/// Returns whether anything changed; the tags of shifted dates are collected
-/// into `shifted_tags`.
+/// The value of a `UI` element under the patient's UID key, or `None` to leave it.
 ///
-/// A tag the anonymizer would hash-shift but that is not encoded as a date
-/// (an `UN` element, typically) cannot be shifted here, so it is removed
-/// rather than handed to the hash shift. Private elements are skipped: the
-/// anonymizer removes them all, and marking one `Keep` would bring it back.
-fn rewrite_dates(
+/// What the anonymizer would hash is rewritten, and so is any UID it has no rule
+/// for, unless the standard defines it. Elements it explicitly leaves alone are
+/// class UIDs.
+fn rewritten_uids(value: &str, action: &Action, uid_key: &[u8; 32]) -> Option<String> {
+    let hashed = matches!(action, Action::HashUID);
+    if !hashed && !matches!(action, Action::Keep) {
+        return None;
+    }
+
+    let mut changed = false;
+    let uids: Vec<String> = value
+        .split('\\')
+        .map(|part| part.trim_matches(|c: char| c.is_whitespace() || c == '\0'))
+        .map(|uid| {
+            if uid.is_empty() || (!hashed && uid.starts_with(DICOM_STANDARD_UID_ROOT)) {
+                uid.to_string()
+            } else {
+                changed = true;
+                pseudonym::pseudonymize_uid(uid_key, uid, UID_ROOT)
+            }
+        })
+        .collect();
+
+    changed.then(|| uids.join("\\"))
+}
+
+/// Settle every date, UID and hashed identifier of `object`, descending into
+/// sequences, and collect the tags rewritten into `kept_tags`.
+///
+/// The anonymizer's own handling of these is not used. Its date shift is keyed
+/// on a public hash of `PatientID` and leaves the date untouched when that is
+/// missing; any date tag it has no rule for is kept as-is; and a value it cannot
+/// parse aborts the whole file. Its UIDs and identifiers (`AccessionNumber`,
+/// order numbers) are an unkeyed hash: anyone holding the original can compute
+/// the result and link the file back to its source.
+///
+/// So dates move by the offset, UIDs are rewritten under a key, and identifiers
+/// are emptied. A value that is not a date is removed, and so is a tag the
+/// anonymizer would hash-shift but that is not encoded as a date (an `UN`
+/// element, typically). Private elements are skipped: the anonymizer removes them
+/// all, and marking one `Keep` would bring it back.
+fn rewrite_elements(
     object: &mut InMemDicomObject,
-    policy: DatePolicy,
+    keys: &PatientKeys,
     defaults: &Config,
-    shifted_tags: &mut BTreeSet<Tag>,
-) -> bool {
+    kept_tags: &mut BTreeSet<Tag>,
+) {
     let mut edits: Vec<(Tag, Option<InMemElement>)> = Vec::new();
 
     for elem in object.iter() {
@@ -372,51 +507,62 @@ fn rewrite_dates(
         if tag.group() % 2 == 1 {
             continue;
         }
+        let action = defaults.get_action(&tag);
 
         match elem.vr() {
             VR::DA | VR::DT => {
                 let edit = match elem.to_str() {
-                    Ok(value) => date_edit(&value, policy),
+                    Ok(value) => date_edit(tag, &value, keys.date_offset_days),
                     Err(_) => DateEdit::Remove,
                 };
                 match edit {
                     DateEdit::Leave => {}
                     DateEdit::Replace(value) => {
-                        shifted_tags.insert(tag);
-                        edits.push((
-                            tag,
-                            Some(DataElement::new(
-                                tag,
-                                elem.vr(),
-                                PrimitiveValue::from(value),
-                            )),
-                        ));
+                        kept_tags.insert(tag);
+                        edits.push((tag, Some(DataElement::new(tag, elem.vr(), value))));
                     }
                     DateEdit::Remove => edits.push((tag, None)),
                 }
             }
+            VR::UI => match elem.to_str() {
+                Ok(value) => {
+                    if let Some(uids) = rewritten_uids(&value, action, &keys.uid_key) {
+                        kept_tags.insert(tag);
+                        edits.push((
+                            tag,
+                            Some(DataElement::new(tag, VR::UI, PrimitiveValue::from(uids))),
+                        ));
+                    }
+                }
+                Err(_) => edits.push((tag, None)),
+            },
             VR::SQ => {
                 let Some(items) = elem.items() else {
                     continue;
                 };
                 let mut items = items.to_vec();
-                let mut changed = false;
                 for item in &mut items {
-                    changed |= rewrite_dates(item, policy, defaults, shifted_tags);
+                    rewrite_elements(item, keys, defaults, kept_tags);
                 }
-                if changed {
+                edits.push((
+                    tag,
+                    Some(DataElement::new(tag, VR::SQ, DataSetSequence::from(items))),
+                ));
+            }
+            _ => match action {
+                Action::HashDate => edits.push((tag, None)),
+                Action::Hash { .. } => {
+                    kept_tags.insert(tag);
                     edits.push((
                         tag,
-                        Some(DataElement::new(tag, VR::SQ, DataSetSequence::from(items))),
+                        Some(DataElement::new(tag, elem.vr(), PrimitiveValue::Empty)),
                     ));
                 }
-            }
-            _ if *defaults.get_action(&tag) == Action::HashDate => edits.push((tag, None)),
-            _ => {}
+                _ => {}
+            },
         }
     }
 
-    let changed = !edits.is_empty();
     for (tag, elem) in edits {
         match elem {
             Some(elem) => {
@@ -427,7 +573,6 @@ fn rewrite_dates(
             }
         }
     }
-    changed
 }
 
 fn read_string(object: &DefaultDicomObject, tag: Tag) -> Option<String> {
