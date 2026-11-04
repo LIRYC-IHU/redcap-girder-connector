@@ -1,8 +1,11 @@
 mod common;
 
 use common::*;
+use dicom_core::value::DataSetSequence;
+use dicom_core::{DataElement, PrimitiveValue, Tag, VR};
 use dicom_deid::dicom;
 use dicom_dictionary_std::tags;
+use dicom_object::InMemDicomObject;
 
 fn contains(haystack: &[u8], needle: &str) -> bool {
     haystack
@@ -273,28 +276,9 @@ fn the_shift_differs_between_patients() {
 }
 
 #[test]
-fn falls_back_to_the_library_default_without_a_birth_date() {
-    // No birth date means no age to preserve; the study date must still not be
-    // the real one.
-    let output = dicom::deidentify(
-        &dicom_fixture_without_birth_date(),
-        "REC-42",
-        "MY PROJECT^REC-42",
-    )
-    .unwrap();
-
-    assert_eq!(read_dicom_string(&output, tags::PATIENT_BIRTH_DATE), None);
-    assert_ne!(
-        read_dicom_string(&output, tags::STUDY_DATE).as_deref(),
-        Some(DICOM_STUDY_DATE),
-        "the real study date leaked"
-    );
-}
-
-#[test]
 fn series_and_acquisition_dates_move_with_the_study() {
-    // The anonymizer removes these by default; the date policy restores them
-    // from the source, shifted, so the acquisition timeline stays coherent.
+    // The anonymizer removes these by default; the date policy keeps them,
+    // shifted, so the acquisition timeline stays coherent.
     let output = dicom::deidentify(&dicom_fixture(), "REC-42", "MY PROJECT^REC-42").unwrap();
     let study = read_dicom_string(&output, tags::STUDY_DATE).unwrap();
 
@@ -306,4 +290,244 @@ fn series_and_acquisition_dates_move_with_the_study() {
         read_dicom_string(&output, tags::ACQUISITION_DATE).as_deref(),
         Some(study.as_str())
     );
+}
+
+// --- Dates the anonymizer would let through --------------------------------
+
+fn put(object: &mut InMemDicomObject, tag: Tag, vr: VR, value: &str) {
+    object.put(DataElement::new(tag, vr, PrimitiveValue::from(value)));
+}
+
+/// A sequence the anonymizer keeps and descends into, holding one date.
+fn put_nested_date(object: &mut InMemDicomObject, value: &str) {
+    let mut item = InMemDicomObject::new_empty();
+    put(&mut item, tags::CONTENT_DATE, VR::DA, value);
+    object.put(DataElement::new(
+        tags::REFERENCED_SERIES_SEQUENCE,
+        VR::SQ,
+        DataSetSequence::from(vec![item]),
+    ));
+}
+
+fn read_nested_date(bytes: &[u8]) -> Option<String> {
+    let object = dicom_object::from_reader(std::io::Cursor::new(&bytes[128..])).ok()?;
+    let sequence = object.element(tags::REFERENCED_SERIES_SEQUENCE).ok()?;
+    let item = sequence.items()?.first()?;
+    Some(
+        item.element(tags::CONTENT_DATE)
+            .ok()?
+            .to_str()
+            .ok()?
+            .trim()
+            .to_string(),
+    )
+}
+
+/// Dates the anonymizer handles three different ways on its own: hash-shifted
+/// (secondary capture, procedure step end), not at all (start of acquisition),
+/// and inside a sequence.
+fn with_scattered_dates(object: &mut InMemDicomObject) {
+    put(
+        object,
+        tags::DATE_OF_SECONDARY_CAPTURE,
+        VR::DA,
+        DICOM_STUDY_DATE,
+    );
+    put(
+        object,
+        tags::PERFORMED_PROCEDURE_STEP_START_DATE,
+        VR::DA,
+        DICOM_STUDY_DATE,
+    );
+    put(
+        object,
+        tags::PERFORMED_PROCEDURE_STEP_END_DATE,
+        VR::DA,
+        DICOM_STUDY_DATE,
+    );
+    put(
+        object,
+        tags::START_ACQUISITION_DATE_TIME,
+        VR::DT,
+        &format!("{DICOM_STUDY_DATE}143512"),
+    );
+    put_nested_date(object, DICOM_STUDY_DATE);
+}
+
+#[test]
+fn every_date_moves_by_the_birth_offset_not_only_the_well_known_ones() {
+    // Only a handful of tags used to be rebased on the birth date; the rest kept
+    // the anonymizer's own shift, or none, so one file mixed two calendars and
+    // the procedure step ended 18 years before it began.
+    let output = dicom::deidentify(
+        &dicom_fixture_edited(with_scattered_dates),
+        "REC-42",
+        "MY PROJECT^REC-42",
+    )
+    .unwrap();
+    let study = read_dicom_string(&output, tags::STUDY_DATE).unwrap();
+
+    for tag in [
+        tags::DATE_OF_SECONDARY_CAPTURE,
+        tags::PERFORMED_PROCEDURE_STEP_START_DATE,
+        tags::PERFORMED_PROCEDURE_STEP_END_DATE,
+    ] {
+        assert_eq!(
+            read_dicom_string(&output, tag).as_deref(),
+            Some(study.as_str()),
+            "{tag}"
+        );
+    }
+    assert_eq!(
+        read_dicom_string(&output, tags::START_ACQUISITION_DATE_TIME),
+        Some(format!("{study}143512"))
+    );
+    assert_eq!(read_nested_date(&output), Some(study));
+    assert!(!contains(&output, DICOM_STUDY_DATE), "a real date leaked");
+}
+
+#[test]
+fn every_value_of_a_multi_valued_date_is_shifted() {
+    let output = dicom::deidentify(
+        &dicom_fixture_edited(|object| {
+            put(
+                object,
+                tags::DATE_OF_LAST_CALIBRATION,
+                VR::DA,
+                "20240115\\20230601",
+            );
+        }),
+        "REC-42",
+        "MY PROJECT^REC-42",
+    )
+    .unwrap();
+    let calibrations = read_dicom_string(&output, tags::DATE_OF_LAST_CALIBRATION).unwrap();
+    let calibrations: Vec<&str> = calibrations.split('\\').collect();
+
+    assert_eq!(calibrations.len(), 2);
+    assert_eq!(
+        days_between("19700101", calibrations[1]),
+        days_between(DICOM_BIRTH_DATE, "20230601")
+    );
+    assert!(!contains(&output, "20230601"), "the second date leaked");
+}
+
+#[test]
+fn the_birth_offset_applies_whatever_the_patient_id() {
+    // The shift depends on the birth date alone. The anonymizer's own shift was
+    // keyed on PatientID and, without one, left the date as it was: next to a
+    // rebased date, a real one gives the birth date away by subtraction.
+    for patient_id in [None, Some("")] {
+        let output = dicom::deidentify(
+            &dicom_fixture_edited(|object| {
+                match patient_id {
+                    None => {
+                        object.remove_element(tags::PATIENT_ID);
+                    }
+                    Some(id) => put(object, tags::PATIENT_ID, VR::LO, id),
+                }
+                with_scattered_dates(object);
+            }),
+            "REC-42",
+            "MY PROJECT^REC-42",
+        )
+        .unwrap();
+        let study = read_dicom_string(&output, tags::STUDY_DATE).unwrap();
+
+        assert_eq!(
+            read_dicom_string(&output, tags::PATIENT_BIRTH_DATE).as_deref(),
+            Some("19700101"),
+            "{patient_id:?}"
+        );
+        assert_eq!(
+            days_between("19700101", &study),
+            days_between(DICOM_BIRTH_DATE, DICOM_STUDY_DATE),
+            "{patient_id:?}"
+        );
+        assert!(
+            !contains(&output, DICOM_STUDY_DATE),
+            "a real date leaked ({patient_id:?})"
+        );
+    }
+}
+
+#[test]
+fn without_a_birth_date_every_date_is_removed() {
+    // No birth date means no age to preserve and nothing to shift from: no
+    // date may survive, whether or not the file has a PatientID.
+    for keep_patient_id in [true, false] {
+        let output = dicom::deidentify(
+            &dicom_fixture_edited(|object| {
+                object.remove_element(tags::PATIENT_BIRTH_DATE);
+                if !keep_patient_id {
+                    object.remove_element(tags::PATIENT_ID);
+                }
+                with_scattered_dates(object);
+            }),
+            "REC-42",
+            "MY PROJECT^REC-42",
+        )
+        .unwrap();
+
+        for tag in [
+            tags::PATIENT_BIRTH_DATE,
+            tags::STUDY_DATE,
+            tags::SERIES_DATE,
+            tags::CONTENT_DATE,
+            tags::DATE_OF_SECONDARY_CAPTURE,
+            tags::PERFORMED_PROCEDURE_STEP_END_DATE,
+            tags::START_ACQUISITION_DATE_TIME,
+        ] {
+            assert_eq!(
+                read_dicom_string(&output, tag),
+                None,
+                "{tag} (PatientID kept: {keep_patient_id})"
+            );
+        }
+        assert_eq!(read_nested_date(&output), None);
+        assert!(!contains(&output, DICOM_STUDY_DATE), "a real date leaked");
+    }
+}
+
+#[test]
+fn a_date_not_encoded_as_a_date_is_removed() {
+    // A study date written as UN cannot be shifted; it must not reach the
+    // anonymizer's hash shift either.
+    let output = dicom::deidentify(
+        &dicom_fixture_edited(|object| {
+            object.put(DataElement::new(
+                tags::STUDY_DATE,
+                VR::UN,
+                PrimitiveValue::from(DICOM_STUDY_DATE.as_bytes().to_vec()),
+            ));
+        }),
+        "REC-42",
+        "MY PROJECT^REC-42",
+    )
+    .unwrap();
+
+    assert_eq!(read_dicom_string(&output, tags::STUDY_DATE), None);
+    assert!(!contains(&output, DICOM_STUDY_DATE), "a real date leaked");
+}
+
+#[test]
+fn a_partial_birth_date_is_removed_rather_than_kept_or_fatal() {
+    // `1954` cannot anchor a shift. Without a PatientID the anonymizer used to
+    // keep it verbatim; with one, it rejected the whole file.
+    for keep_patient_id in [true, false] {
+        let output = dicom::deidentify(
+            &dicom_fixture_edited(|object| {
+                put(object, tags::PATIENT_BIRTH_DATE, VR::DA, "1954");
+                if !keep_patient_id {
+                    object.remove_element(tags::PATIENT_ID);
+                }
+            }),
+            "REC-42",
+            "MY PROJECT^REC-42",
+        )
+        .unwrap_or_else(|e| panic!("rejected (PatientID kept: {keep_patient_id}): {e}"));
+
+        assert_eq!(read_dicom_string(&output, tags::PATIENT_BIRTH_DATE), None);
+        assert!(!contains(&output, DICOM_STUDY_DATE), "a real date leaked");
+    }
 }

@@ -119,6 +119,14 @@ fn real_dicom_files_are_deidentified() {
             }
         }
 
+        let dates = source_dates(&source);
+        for date in &dates {
+            assert!(
+                !contains(&output, date),
+                "{name}: the real date {date} survived deidentification"
+            );
+        }
+
         assert!(
             dicom::validate(&output).is_ok(),
             "{name}: the deidentified file no longer parses"
@@ -140,6 +148,10 @@ fn real_dicom_files_are_deidentified() {
             }
             eprintln!("{name}: birth date pinned to the epoch, study date moved with it");
         }
+        eprintln!(
+            "{name}: none of its {} distinct dates survived",
+            dates.len()
+        );
         eprintln!(
             "{name}: {} identifying elements removed, {} -> {} bytes",
             identifiers.len(),
@@ -163,6 +175,52 @@ fn read_string(bytes: &[u8], tag: dicom_core::Tag) -> Option<String> {
     let object = dicom_object::from_reader(std::io::Cursor::new(stream)).ok()?;
     let value = object.element(tag).ok()?.to_str().ok()?.trim().to_string();
     (!value.is_empty()).then_some(value)
+}
+
+/// Every calendar date written in a public `DA` or `DT` element of a real
+/// file, sequences included, as `YYYYMMDD`. Private elements are left out: the
+/// anonymizer drops them whole.
+fn source_dates(bytes: &[u8]) -> Vec<String> {
+    use dicom_core::header::Header;
+    use dicom_core::VR;
+    use dicom_object::InMemDicomObject;
+
+    fn collect(object: &InMemDicomObject, dates: &mut Vec<String>) {
+        for elem in object.iter() {
+            if elem.tag().group() % 2 == 1 {
+                continue;
+            }
+            match elem.vr() {
+                VR::DA | VR::DT => {
+                    let Ok(value) = elem.to_str() else { continue };
+                    for part in value.split('\\') {
+                        let part = part.trim();
+                        if dates::parse(part).is_some() && part.len() >= 8 {
+                            dates.push(part[..8].to_string());
+                        }
+                    }
+                }
+                VR::SQ => {
+                    for item in elem.items().unwrap_or_default() {
+                        collect(item, dates);
+                    }
+                }
+                _ => {}
+            }
+        }
+    }
+
+    let stream = if bytes.starts_with(b"DICM") {
+        bytes
+    } else {
+        &bytes[128..]
+    };
+    let object = dicom_object::from_reader(std::io::Cursor::new(stream)).expect("parses");
+    let mut dates = Vec::new();
+    collect(&object, &mut dates);
+    dates.sort();
+    dates.dedup();
+    dates
 }
 
 /// Elements of a real file that must not survive, read back as strings.

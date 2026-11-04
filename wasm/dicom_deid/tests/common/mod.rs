@@ -49,9 +49,18 @@ pub fn dicom_fixture_without_birth_date() -> Vec<u8> {
     dicom_fixture_with(DICOM_STUDY_DATE, None)
 }
 
-fn dicom_fixture_with(study_date: &str, birth_date: Option<&str>) -> Vec<u8> {
-    let object = dicom_dataset_with(study_date, birth_date);
+/// The standard fixture, altered by `edit` before it is serialized.
+pub fn dicom_fixture_edited(edit: impl FnOnce(&mut InMemDicomObject)) -> Vec<u8> {
+    let mut object = dicom_dataset_with(DICOM_STUDY_DATE, Some(DICOM_BIRTH_DATE));
+    edit(&mut object);
+    part10_bytes(object)
+}
 
+fn dicom_fixture_with(study_date: &str, birth_date: Option<&str>) -> Vec<u8> {
+    part10_bytes(dicom_dataset_with(study_date, birth_date))
+}
+
+fn part10_bytes(object: InMemDicomObject) -> Vec<u8> {
     let meta_builder = FileMetaTableBuilder::new()
         .media_storage_sop_class_uid(SECONDARY_CAPTURE_STORAGE)
         .media_storage_sop_instance_uid(DICOM_SOP_UID)

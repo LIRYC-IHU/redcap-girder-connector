@@ -1,5 +1,30 @@
 # Changelog
 
+## 1.5.1
+
+### Fixed — deidentification
+
+- **No DICOM date survives in clear any more.** Only seven well-known dates
+  were moved by the birth-date offset; every other one was left to the
+  anonymizer, which got three cases wrong:
+  - its hash shift is keyed on `PatientID`, and a file *without* one kept its
+    dates as they were — next to a rebased study date, a real date gives the
+    birth date away by subtraction. A partial birth date (`1954`) was kept
+    verbatim the same way;
+  - it keeps any date it has no rule for, some 70 standard tags among them
+    (`StartAcquisitionDateTime`, `RadiopharmaceuticalStartDateTime`, …);
+  - a partial birth date in a file *with* a `PatientID` made it reject the
+    whole file.
+
+  Every `DA` and `DT` element, sequences included, is now settled before the
+  anonymizer runs, and its own date shift is no longer used:
+  - **with a birth date**, every date moves by the same offset, whatever the
+    `PatientID`, so a file no longer mixes two calendars (a procedure step
+    used to end 18 years before it began);
+  - **without one** — absent, or not a full calendar date — every date is
+    removed. Such files used to keep a study date hash-shifted by up to ten
+    years.
+
 ## 1.5.0
 
 ### Fixed

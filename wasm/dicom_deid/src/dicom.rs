@@ -1,13 +1,19 @@
 use std::borrow::Cow;
+use std::collections::BTreeSet;
 use std::io::Cursor;
 
+use dicom_anonymization::actions::Action;
 use dicom_anonymization::config::builder::ConfigBuilder;
 use dicom_anonymization::config::uid_root::UidRoot;
+use dicom_anonymization::config::Config;
 use dicom_anonymization::processor::DefaultProcessor;
 use dicom_anonymization::tags;
 use dicom_anonymization::Anonymizer;
+use dicom_core::header::Header;
+use dicom_core::value::DataSetSequence;
 use dicom_core::{DataElement, PrimitiveValue, Tag, VR};
-use dicom_object::{DefaultDicomObject, FileDicomObject, FileMetaTableBuilder, InMemDicomObject};
+use dicom_object::mem::InMemElement;
+use dicom_object::{DefaultDicomObject, FileMetaTableBuilder, InMemDicomObject};
 use dicom_transfer_syntax_registry::entries::{
     EXPLICIT_VR_LITTLE_ENDIAN, IMPLICIT_VR_LITTLE_ENDIAN,
 };
@@ -214,25 +220,47 @@ pub fn deidentify(
     patient_name: &str,
 ) -> Result<Vec<u8>, String> {
     let stream = dicom_stream(input_bytes).map_err(|e| format!("SKIP: {e}"))?;
-    let source = dicom_object::from_reader(Cursor::new(stream.as_ref()))
+    let mut source = dicom_object::from_reader(Cursor::new(stream.as_ref()))
         .map_err(|e| format!("SKIP: input is not a valid DICOM file: {e}"))?;
     if kind_of(&source) == DicomKind::Directory {
         return Err(DICOMDIR_SKIP_REASON.to_string());
     }
 
+    // Dates are settled before the anonymizer runs, see [`DatePolicy`]. Every
+    // shifted date is then marked `Keep`, so the anonymizer neither moves it a
+    // second time nor removes it.
+    let policy = DatePolicy::for_source(&source);
+    let defaults = anonymizer_config().build();
+    let mut shifted_tags = BTreeSet::new();
+    let rewritten = rewrite_dates(&mut source, policy, &defaults, &mut shifted_tags);
+
+    let prepared: Cow<'_, [u8]> = if rewritten {
+        let mut bytes = Vec::with_capacity(stream.len());
+        source
+            .write_all(&mut bytes)
+            .map_err(|e| format!("SKIP: DICOM write failed: {e}"))?;
+        // `write_all` emits the preamble as well; the anonymizer expects `DICM` first.
+        Cow::Owned(bytes.split_off(PREAMBLE_LENGTH))
+    } else {
+        Cow::Borrowed(stream.as_ref())
+    };
+
     // The anonymizer only visits elements that already exist in the source, so
     // the REDCap identity is written explicitly afterwards: a file missing
     // `PatientID` (or the deidentification stamp) would otherwise come out
     // without either.
-    let config = ConfigBuilder::default()
-        .uid_root(UidRoot(UID_ROOT.into()))
+    let config = shifted_tags
+        .into_iter()
+        .fold(anonymizer_config(), |builder, tag| {
+            builder.tag_action(tag, Action::Keep)
+        })
         .build();
 
     let processor = DefaultProcessor::new(config);
     let anonymizer = Anonymizer::new(processor);
 
     let mut anonymized = anonymizer
-        .anonymize(Cursor::new(stream.as_ref()))
+        .anonymize(Cursor::new(prepared.as_ref()))
         .map_err(|e| format!("SKIP: DICOM anonymization failed: {e}"))?
         .anonymized;
 
@@ -257,8 +285,6 @@ pub fn deidentify(
         PrimitiveValue::from("YES"),
     ));
 
-    apply_date_policy(&source, &mut anonymized);
-
     let mut out = Vec::new();
     anonymized
         .write_all(&mut out)
@@ -267,51 +293,141 @@ pub fn deidentify(
     Ok(out)
 }
 
-/// Date tags rewritten by the age-preserving shift.
+fn anonymizer_config() -> ConfigBuilder {
+    ConfigBuilder::default().uid_root(UidRoot(UID_ROOT.into()))
+}
+
+/// How the dates of one file are deidentified.
 ///
-/// The anonymizer removes or hash-shifts these on its own; they are restored
-/// here from the source, moved by the patient's offset, so the interval between
-/// the birth date and the acquisition survives.
-const SHIFTED_DATE_TAGS: &[(Tag, VR)] = &[
-    (tags::STUDY_DATE, VR::DA),
-    (tags::SERIES_DATE, VR::DA),
-    (tags::ACQUISITION_DATE, VR::DA),
-    (tags::CONTENT_DATE, VR::DA),
-    (tags::INSTANCE_CREATION_DATE, VR::DA),
-    (tags::PERFORMED_PROCEDURE_STEP_START_DATE, VR::DA),
-    (tags::ACQUISITION_DATE_TIME, VR::DT),
-];
+/// The anonymizer's own date handling is not used. Its hash shift is keyed on a
+/// public hash of `PatientID`, leaves the date untouched when that is missing,
+/// and aborts the whole file over a value it cannot parse; and any date tag it
+/// has no rule for is kept as-is. So every `DA` and `DT` element, sequences
+/// included, is settled here before the anonymizer runs.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum DatePolicy {
+    /// The birth date is known: every date moves by this offset, so the birth
+    /// date lands on 1970-01-01 and the age at each acquisition is exact.
+    Shift(i64),
+    /// No usable birth date: there is no age to preserve and nothing to derive
+    /// a shift from, so every date is removed.
+    Remove,
+}
 
-/// Pin the birth date to 1970-01-01 and move every other date by the same
-/// offset. Without a birth date there is no age to preserve, so the anonymizer's
-/// own handling (hash-shifted study date, removed series/acquisition dates) is
-/// left in place.
-fn apply_date_policy(
-    source: &DefaultDicomObject,
-    anonymized: &mut FileDicomObject<InMemDicomObject>,
-) {
-    let Some(birth_date) = read_string(source, tags::PATIENT_BIRTH_DATE) else {
-        return;
-    };
-    let Some(offset) = dates::offset_from_birth_date(&birth_date) else {
-        return;
-    };
-
-    anonymized.put(DataElement::new(
-        tags::PATIENT_BIRTH_DATE,
-        VR::DA,
-        PrimitiveValue::from(dates::as_epoch_birth_date(&birth_date)),
-    ));
-
-    for (tag, vr) in SHIFTED_DATE_TAGS {
-        let Some(original) = read_string(source, *tag) else {
-            continue;
-        };
-        let Some(shifted) = dates::shift(&original, offset) else {
-            continue;
-        };
-        anonymized.put(DataElement::new(*tag, *vr, PrimitiveValue::from(shifted)));
+impl DatePolicy {
+    fn for_source(source: &DefaultDicomObject) -> Self {
+        read_string(source, tags::PATIENT_BIRTH_DATE)
+            .and_then(|birth_date| dates::offset_from_birth_date(&birth_date))
+            .map_or(Self::Remove, Self::Shift)
     }
+}
+
+/// What happens to one date element before the anonymizer sees it.
+enum DateEdit {
+    Leave,
+    Replace(String),
+    Remove,
+}
+
+fn date_edit(value: &str, policy: DatePolicy) -> DateEdit {
+    let DatePolicy::Shift(offset) = policy else {
+        return DateEdit::Remove;
+    };
+
+    let values: Vec<&str> = value
+        .split('\\')
+        .map(|part| part.trim_matches(|c: char| c.is_whitespace() || c == '\0'))
+        .collect();
+    if values.iter().all(|part| part.is_empty()) {
+        return DateEdit::Leave;
+    }
+
+    values
+        .iter()
+        .map(|part| dates::shift(part, offset))
+        .collect::<Option<Vec<_>>>()
+        .map_or(DateEdit::Remove, |shifted| {
+            DateEdit::Replace(shifted.join("\\"))
+        })
+}
+
+/// Apply `policy` to every date in `object`, descending into sequences.
+/// Returns whether anything changed; the tags of shifted dates are collected
+/// into `shifted_tags`.
+///
+/// A tag the anonymizer would hash-shift but that is not encoded as a date
+/// (an `UN` element, typically) cannot be shifted here, so it is removed
+/// rather than handed to the hash shift. Private elements are skipped: the
+/// anonymizer removes them all, and marking one `Keep` would bring it back.
+fn rewrite_dates(
+    object: &mut InMemDicomObject,
+    policy: DatePolicy,
+    defaults: &Config,
+    shifted_tags: &mut BTreeSet<Tag>,
+) -> bool {
+    let mut edits: Vec<(Tag, Option<InMemElement>)> = Vec::new();
+
+    for elem in object.iter() {
+        let tag = elem.tag();
+        if tag.group() % 2 == 1 {
+            continue;
+        }
+
+        match elem.vr() {
+            VR::DA | VR::DT => {
+                let edit = match elem.to_str() {
+                    Ok(value) => date_edit(&value, policy),
+                    Err(_) => DateEdit::Remove,
+                };
+                match edit {
+                    DateEdit::Leave => {}
+                    DateEdit::Replace(value) => {
+                        shifted_tags.insert(tag);
+                        edits.push((
+                            tag,
+                            Some(DataElement::new(
+                                tag,
+                                elem.vr(),
+                                PrimitiveValue::from(value),
+                            )),
+                        ));
+                    }
+                    DateEdit::Remove => edits.push((tag, None)),
+                }
+            }
+            VR::SQ => {
+                let Some(items) = elem.items() else {
+                    continue;
+                };
+                let mut items = items.to_vec();
+                let mut changed = false;
+                for item in &mut items {
+                    changed |= rewrite_dates(item, policy, defaults, shifted_tags);
+                }
+                if changed {
+                    edits.push((
+                        tag,
+                        Some(DataElement::new(tag, VR::SQ, DataSetSequence::from(items))),
+                    ));
+                }
+            }
+            _ if *defaults.get_action(&tag) == Action::HashDate => edits.push((tag, None)),
+            _ => {}
+        }
+    }
+
+    let changed = !edits.is_empty();
+    for (tag, elem) in edits {
+        match elem {
+            Some(elem) => {
+                object.put(elem);
+            }
+            None => {
+                object.remove_element(tag);
+            }
+        }
+    }
+    changed
 }
 
 fn read_string(object: &DefaultDicomObject, tag: Tag) -> Option<String> {

@@ -291,8 +291,18 @@ acquisition's day-of-year moves by the birth date's day-of-year: for a patient
 recorded as born on 1 January — a common placeholder for an unknown date — the
 acquisition keeps its real day and month. And a file with **no** birth date gets
 no shift, because there is no age to preserve; its dates are then handled by the
-format's own default, which for DICOM means a hash-shifted study date and
-removed series and acquisition dates.
+format's own rule.
+
+In DICOM that rule is simple: **without a birth date, every date is removed.**
+With one, "every other date" means every `DA` and `DT` element, inside sequences
+too, whatever the `PatientID`; a value that cannot be read as a date is removed.
+The anonymizer's own date shift is not used at all: it is keyed on a public
+hash of `PatientID`, leaves dates in clear when there is none, and keeps any
+date tag it has no rule for. Series and acquisition dates, which it would
+remove, are kept, shifted like the rest.
+
+A birth date that is not a full calendar date (`1954`) counts as absent and is
+removed.
 
 Times of day are kept, and each date is written back in the notation it used
 (`YYYYMMDD` or `YYYY-MM-DD`). A value is only treated as a date if it parses as
