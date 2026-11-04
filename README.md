@@ -15,11 +15,20 @@ Supported formats:
 | DICOM | `DICM` magic code, or a bare data set / file meta group without one | Patient identity, institution, private tags; UIDs rehashed; dates shifted |
 | DICOMDIR | Media Storage Directory SOP class | Not uploaded at all — see below |
 | XML ECG (HL7 aECG only) | root element + namespace | Everything outside an allowlist; UIDs replaced, dates shifted |
-| Schiller Holter | file magic number | Patient block, voice annotations, device UUID |
+| Schiller Holter | file magic number (byte 5 may be `0x00` or `0x01`) | Patient block, voice annotations, device UUID |
 
 A file in none of these formats is dropped from the batch. An XML ECG in a
 dialect other than HL7 aECG is **refused** — see below. Either way the rest of
 the batch is uploaded, and what was left behind is reported.
+
+Every deidentified file is tied to its patient by a **pseudonym** computed from
+the file's NIP with a key held by REDCap: the NIP never leaves the browser, and
+the key never leaves the server. It checks that an upload is consistent with the
+record's earlier ones, sets the shift applied to every date, and keys the
+rewriting of DICOM UIDs. Nothing is sent before the uploader has reviewed the
+patient, the content and that check in a REDCap window. The design, the threat model and its limits are in
+[`docs/design/pseudonymisation.md`](docs/design/pseudonymisation.md); the wire
+format in [`protocol/README.md`](protocol/README.md).
 
 ## Repository layout
 
@@ -30,10 +39,15 @@ src/                     the REDCap module, exactly as deployed
   js/girder-uploader.js        the widget
   js/girder-uploader-core.js   pure browser logic (tested)
   js/deidentify-worker.js      Web Worker bridging the widget and the WASM
+  Voprf.php                    the server side of the pseudonym (libsodium)
 wasm/dicom_deid/         Rust crate: the deidentifiers, plus their tests
-  src/dates.rs                 the date policy shared by DICOM and XML ECG
+  src/dates.rs                 date arithmetic shared by DICOM and XML ECG
+crates/liryc-pseudonym/  Rust crate: the VOPRF behind the pseudonym
+protocol/                wire specification and test vectors shared with the PHP side
+docs/design/             design documents
 tests/js/                Node tests for the browser logic
 tests/php/               PHP tests for the module
+tests/e2e/               Docker stack (REDCap, Girder) and end-to-end scenarios
 scripts/                 build, package and version-bump helpers
 VERSION                  the single source of truth for the module version
 ```
@@ -58,16 +72,21 @@ To deploy a working copy into a local REDCap, symlink `src/` into
 `redcap/modules/` under a versioned name:
 
 ```bash
-ln -s "$PWD/src" /path/to/redcap/modules/girder_uploader_v1.5.0
+ln -s "$PWD/src" /path/to/redcap/modules/girder_uploader_v2.0.0
 ```
 
 ## Tests
 
 ```bash
-cd wasm/dicom_deid && cargo test    # deidentification (DICOM, XML ECG, Schiller)
-node --test "tests/js/*.test.js"    # file selection, worker contract, metadata
-php tests/php/run.php               # paths, settings, upload-plan signatures
+cd wasm/dicom_deid && cargo test         # deidentification (DICOM, XML ECG, Schiller)
+cd crates/liryc-pseudonym && cargo test  # the VOPRF: RFC 9497 vectors, protocol vectors
+node --test "tests/js/*.test.js"         # file selection, worker contract, patients
+php tests/php/run.php                    # settings, upload plans, pseudonym, VOPRF
 ```
+
+The end-to-end scenarios run against a local Docker stack, see
+[`tests/e2e/README.md`](tests/e2e/README.md). The Rust and PHP sides of the VOPRF
+check themselves against the same vectors in `protocol/test-vectors/`.
 
 The PHP suite is dependency-free: it stubs the REDCap base class and calls the
 module directly, so `php` is all it needs. Deidentification fixtures are
@@ -125,15 +144,74 @@ the project settings:
 | `root-collection-id` | Collection uploads are stored under |
 | `chunk-size`, `max-retries`, `retry-delay` | Upload transport tuning |
 | `deidentify-dicom` | Deidentify DICOM files (on by default) |
-| `deidentify-xml-ecg` | Deidentify XML ECG files |
-| `deidentify-schiller-holter` | Deidentify Schiller Holter files |
-| `preserve-upload-folder-architecture` | Keep the user's folder names, or store flat under neutral names |
+| `deidentify-xml-ecg` | Deidentify XML ECG files (on by default) |
+| `deidentify-schiller-holter` | Deidentify Schiller Holter files (on by default) |
+| `pseudonym-fingerprint-check` | Warn before an upload whose patient differs from the record's earlier uploads; the uploader can still confirm it, which is logged (on by default) |
+| `pseudonym-domain` | Separates this project's pseudonyms from other projects'; `redcap:<project id>` when empty |
+| `preserve-upload-folder-architecture` | Keep the user's folder names; off by default, since they can carry the patient's identity |
+
+In the Control Center (system settings):
+
+| Setting | Purpose |
+| --- | --- |
+| `pseudonym-redcap-key` | The secret key behind the pseudonym, 64 hex characters; generated when empty |
+| `pseudonym-daily-limit` | Pseudonym evaluations accepted per project and per 24 hours (500) |
+
+**`pseudonym-redcap-key` and `pseudonym-domain` must never change once files
+have been uploaded**: every patient would get a new signature (and a mismatch
+alert on every record), a new date offset and new UIDs. Back the key up like an
+encryption key.
 
 A format whose checkbox is off is still recognized but uploaded **untouched** —
 that is an explicit opt-out, not an oversight. One exception: an XML ECG in a
 dialect we cannot certify is refused whichever way `deidentify-xml-ecg` is set.
 Opting out covers the formats we can read, not one we cannot. The refusal
 concerns that file alone; the rest of the batch goes through.
+
+## Updating from 1.x
+
+Update through the Control Center as usual. Tested with a real update on REDCap
+15.9.3, from v1.2.0 and from v1.5.0 (`tests/e2e/run.sh upgrade <tag>`).
+
+**Before updating, check PHP.** The server needs **PHP 8.1 or later with the
+sodium extension** (libsodium 1.0.18 or later). On an older PHP, REDCap refuses
+this version **and disables the module across the instance**: uploads stop until
+an administrator enables the previous version again. Projects keep their settings
+and no data is lost.
+
+**What the update does.** It creates `pseudonym-redcap-key`, so **back the key up
+right after**. Nothing else changes: uploads in Girder are not touched, and the
+fields of existing records still display, refresh and delete as before. The
+signature check is on for every project, without saving its settings.
+
+**Open pages.** A form opened before the update can no longer upload: the server
+refuses it, and it asks the user to reload. Otherwise it would still send files
+deidentified the old way.
+
+**What stays different for data sent before the update:**
+
+- **Dates are on another time scale.** Uploads before and after the update cannot
+  be compared: an interval across the two is meaningless (over 25 000 days in the
+  update tests, for studies 31 days apart). `DeidentificationMethod` tells them
+  apart: it carries a version from 2.0.0 on. To follow a patient across both,
+  send the earlier examinations again from their source.
+- **UIDs follow another scheme.** A study sent again after the update comes out as
+  a new study, next to the old one.
+- **Earlier uploads have no signature**, and no signature can be computed from
+  deidentified files. A record's first upload after the update stores one without
+  being able to compare it, and the review window says so. The check protects the
+  record from that upload on.
+
+**What changes for users:**
+
+- A file without a NIP is now refused, where 1.x accepted it.
+- New uploads go under an event folder. Uploads sent before stay directly under
+  the record, so **a script reading Girder has to expect both layouts**.
+- Existing projects keep their stored settings, new defaults only reach new
+  projects. **Check existing projects by hand against MR-SEC-05/06**: those with
+  `deidentify-xml-ecg` or `deidentify-schiller-holter` unticked still upload these
+  formats identified, and those with `preserve-upload-folder-architecture` ticked
+  still keep the folder and file names.
 
 ## How an upload works
 
@@ -144,26 +222,56 @@ concerns that file alone; the rest of the batch goes through.
 2. The browser expands a single top-level ZIP if one was dropped, filters out OS
    noise (`.DS_Store`, dotfiles, `~*`) and nested archives, and sorts the batch
    by path. Batches are capped at 9999 files.
-3. Every file goes through the WASM worker. Recognized formats are deidentified
+3. The worker reads who each file belongs to and what it is (for DICOM, the
+   header only). Files that will be deidentified need a NIP: one without is set
+   aside, and a batch spanning several patients is refused as a whole. Then, in
+   order:
+   1. the browser computes the patient's pseudonym with REDCap, which checks
+      that Girder answers and compares the two-character signature with the
+      record's earlier uploads, storing nothing (when the project's
+      `pseudonym-fingerprint-check` box is ticked, the default);
+   2. a window opens, the same kind as the Online Designer's, and nothing has
+      been sent yet. It stays in the browser and shows last and first name,
+      date of birth, NIP, each DICOM series (modality, description, file
+      count), ECG and Holter counts, and what the check found:
+
+      | Check | Shown as |
+      | --- | --- |
+      | Same signature | Same patient signature, with the number of earlier uploads |
+      | No signature, no earlier upload | First upload for this record |
+      | No signature, earlier uploads | Earlier uploads cannot be compared: they come from a version without signature |
+      | Different signature | **Patient signature mismatch**, in red |
+      | Box unticked | Patient check disabled |
+
+   3. the uploader confirms or cancels. Cancelling leaves no trace: the field
+      and the form stay as they were. A mismatch can be confirmed with **Upload
+      anyway**: the record keeps its signature, and the alert goes to the
+      project's Logging page, the module's log, and the field, where it stays
+      visible;
+   4. only then is the signature stored, on the record's first upload.
+4. Every file goes through the WASM worker. Recognized formats are deidentified
    (or passed through when disabled); a file in none of them is skipped, and a
    file the worker refuses — an XML ECG in an unsupported dialect, say — is set
    aside. **Neither cancels the batch**: one stray `DICOMDIR` or viewer XML in a
    DICOM archive must not lose a thousand-file upload. The same holds during the
    transfer itself: a file that fails to reach Girder is recorded and the others
    carry on.
-4. The server builds a signed upload plan per file — target folder, item, stored
+5. The server builds a signed upload plan per file — target folder, item, stored
    name — and the browser sends chunks back against that plan. The signature is
    an HMAC over the plan keyed by the Girder API key, so the browser cannot
    redirect an upload to another collection or record.
-5. Files land under `{DAG}/{record_id}/{field_name}` (with ` -{instance}`
-   appended for repeating instances beyond the first).
-6. A JSON summary — file sample, counts, Girder folder link, upload state — is
+6. Files land under `{DAG}/{record_id}/{event_id} ({event_name})/{field_name}`
+   (with ` -{instance}` appended for repeating instances beyond the first), so
+   the same field on two events of a longitudinal project stays apart. A
+   non-longitudinal project has its one event at that level too. Renaming an
+   event starts a new folder for later uploads.
+7. A JSON summary — file sample, counts, Girder folder link, upload state — is
    written back into the tagged field, **including the files that were left
    behind and why**. They are listed in the widget and stored with the rest, so
    a rejection is never silent: it survives a page reload and stays auditable.
    The batch only fails outright when *nothing* could be uploaded.
 
-With `preserve-upload-folder-architecture` disabled, files are stored flat under
+By default (`preserve-upload-folder-architecture` off), files are stored flat under
 neutral names (`0001.ext` … `9999.ext`), so the file names themselves cannot
 leak identity.
 
@@ -187,9 +295,20 @@ module writes:
 
 - `PatientID` ← the REDCap record id
 - `PatientName` ← `{project title}^{record id}`
-- `DeidentificationMethod` ← `IHU LIRYC REDCAP PLUGIN`, `PatientIdentityRemoved` ← `YES`
+- `PatientBirthDate` ← empty (the attribute is type 2, so it stays present)
+- `PatientAge` ← the age at the study, computed on the real dates: years
+  (`069Y`), months under two years (`018M`), weeks under two months (`006W`)
+- `DeidentificationMethod` ← `IHU LIRYC REDCAP PLUGIN v{release}`, e.g.
+  `IHU LIRYC REDCAP PLUGIN v2.0.0`, so a file says which rules it went through;
+  `PatientIdentityRemoved` ← `YES`
+- `LongitudinalTemporalInformationModified` ← `MODIFIED`
 
-UIDs are rehashed deterministically, so instances of one study stay grouped.
+UIDs are rewritten under a key derived from the patient's pseudonym and the
+record id, `{root}.{HMAC-SHA256(key, uid)}`: instances of one study stay grouped
+and references stay valid, but nobody holding the original UID can compute the
+new one, which the anonymizer's unkeyed hash allowed. `AccessionNumber` and
+imaging order numbers, which it would hash the same way, are emptied. UIDs the
+DICOM standard defines are left alone.
 Dates follow the shared policy below.
 
 A **DICOMDIR** is recognized by its SOP class (`1.2.840.10008.1.3.10`), never by
@@ -274,35 +393,31 @@ patient id field, mints a fresh device UUID, and repairs the CRC.
 
 ### Dates
 
-DICOM and XML ECG share one rule, so a patient's files stay consistent with each
-other:
+Every date of a patient's files — DICOM `DA` and `DT` elements, sequences
+included, and the dates of XML ECGs — moves back by the same number of days,
+**between 50 and 100 years**, derived from the patient's pseudonym. Dates are
+rewritten in the elements that held them. So:
 
-- the birth date becomes **1970-01-01**;
-- every other date moves by that same offset, `1970-01-01 − birth date`.
+- intervals between a patient's examinations are exact, whatever the file
+  format or the upload they came in;
+- the calendar is gone: shifted dates land in the 20th century, plainly not
+  real, and keep neither the era, nor the season, nor the weekday;
+- the offset is computed and applied in the browser and stored nowhere:
+  computing it takes the patient's NIP as well as REDCap's key.
 
-`exam − birth` is therefore preserved to the day: **age at acquisition is
-exact**, intervals between a patient's studies are exact, and the real calendar
-dates are gone. Reversing a shifted date needs the birth date, which the file no
-longer carries. The offset is per patient, so two patients imaged the same day
-do not land on the same anonymized date.
+The **birth date is blanked**, not shifted: shifted with the rest it would give
+the exact age back by subtraction, and an exact age at a procedure all but
+identifies a patient. The age is written in `PatientAge` instead (DICOM), in
+years. The offset does not depend on anything left in the file, so a file
+without a birth date keeps its (shifted) dates.
 
-Two consequences worth knowing. The shift is a whole number of days, so the
-acquisition's day-of-year moves by the birth date's day-of-year: for a patient
-recorded as born on 1 January — a common placeholder for an unknown date — the
-acquisition keeps its real day and month. And a file with **no** birth date gets
-no shift, because there is no age to preserve; its dates are then handled by the
-format's own rule.
+A value that cannot be read as a date is removed, and so is a DICOM date tag not
+encoded as one (`UN`). The anonymizer's own date handling is not used at all: it
+is keyed on a public hash of `PatientID`, leaves dates in clear when there is
+none, and keeps any date tag it has no rule for.
 
-In DICOM that rule is simple: **without a birth date, every date is removed.**
-With one, "every other date" means every `DA` and `DT` element, inside sequences
-too, whatever the `PatientID`; a value that cannot be read as a date is removed.
-The anonymizer's own date shift is not used at all: it is keyed on a public
-hash of `PatientID`, leaves dates in clear when there is none, and keeps any
-date tag it has no rule for. Series and acquisition dates, which it would
-remove, are kept, shifted like the rest.
-
-A birth date that is not a full calendar date (`1954`) counts as absent and is
-removed.
+Files deidentified before 2.0.0 sit on another calendar (dates anchored on the
+birth date); `DeidentificationMethod` tells the generations apart.
 
 Times of day are kept, and each date is written back in the notation it used
 (`YYYYMMDD` or `YYYY-MM-DD`). A value is only treated as a date if it parses as

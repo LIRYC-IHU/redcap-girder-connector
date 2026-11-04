@@ -1,0 +1,158 @@
+# End-to-end test stack for the Girder Uploader module.
+#
+# Use ./run.sh (it sets the compose project name `rgc-e2e` and MODULE_VERSION).
+# Every credential below is a throwaway value for this local stack only.
+#
+#   redcap    REDCap 15 (image docker-redcap-php:latest) + the module from ../../src (ro)
+#   mariadb   REDCap database
+#   girder    Girder 5.0.9
+#   mongo     Girder database
+#
+# Optional profile `worker` (./run.sh up --worker): redis, rabbitmq and a Celery worker.
+# The module's upload flow does not need them (POST /folder, /item, /file, /file/chunk are
+# all synchronous). Girder 5 delegates DELETE /folder, folder copy and collection delete to
+# Celery, so the module's "Delete uploaded contents" action needs the worker; redis only
+# carries web-UI notifications.
+name: rgc-e2e
+
+x-girder-env: &girder-env
+  GIRDER_MONGO_URI: mongodb://mongo:27017/girder
+  GIRDER_NOTIFICATION_REDIS_URL: redis://redis:6379/0
+  GIRDER_WORKER_BROKER: amqp://girder:girder-e2e@rabbitmq:5672/girder
+  GIRDER_WORKER_BACKEND: rpc://girder:girder-e2e@rabbitmq:5672/girder
+
+services:
+  mariadb:
+    image: mariadb:latest
+    environment:
+      MARIADB_ROOT_PASSWORD: root-e2e
+      MARIADB_DATABASE: redcap
+      MARIADB_USER: redcap
+      MARIADB_PASSWORD: redcap-e2e
+    # Same flags as ~/Code/docker-redcap (large imports; REDCap's known optimizer issue).
+    command: ["mariadbd", "--max-allowed-packet=1G", "--optimizer_switch=rowid_filter=OFF"]
+    volumes:
+      - mariadb-data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+      start_period: 10s
+
+  redcap:
+    build:
+      context: ./redcap
+    image: rgc-e2e-redcap:latest
+    ports:
+      - "127.0.0.1:18081:80"
+    environment:
+      MYSQL_HOST: mariadb
+      MYSQL_DATABASE: redcap
+      MYSQL_USER: redcap
+      MYSQL_PASSWORD: redcap-e2e
+      REDCAP_SALT: e2e-test-salt-not-a-secret-0123456789
+    volumes:
+      # REDCap identifies a module version by its directory name.
+      # MODULE_SRC: another copy of src/ to test (default: this working tree).
+      - ${MODULE_SRC:-../../src}:/var/www/html/modules/girder_uploader_v${MODULE_VERSION:?run through ./run.sh, or export MODULE_VERSION=$(cat ../../VERSION)}:ro
+    depends_on:
+      mariadb:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "-o", "/dev/null", "http://localhost/robots.txt"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+
+  mongo:
+    image: mongo:7
+    volumes:
+      - mongo-data:/data/db
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping')"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+      start_period: 10s
+
+  girder:
+    build:
+      context: ./girder
+    image: rgc-e2e-girder:latest
+    # The upstream girder image is published for amd64 only (emulated on Apple silicon).
+    platform: linux/amd64
+    command: ["-H", "0.0.0.0", "--mode", "production"]
+    ports:
+      - "127.0.0.1:18080:8080"
+    environment:
+      <<: *girder-env
+    volumes:
+      - girder-assetstore:/var/girder/assetstore
+    depends_on:
+      mongo:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python3", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8080/api/v1/system/version', timeout=5)"]
+      interval: 5s
+      timeout: 6s
+      retries: 60
+      start_period: 20s
+
+  # ---- optional: profile `worker` ------------------------------------------------------
+  redis:
+    image: redis:7.4-alpine
+    profiles: ["worker"]
+    command: ["redis-server", "--save", "", "--appendonly", "no"]
+
+  rabbitmq:
+    image: rabbitmq:4.1-management-alpine
+    profiles: ["worker"]
+    hostname: rabbitmq
+    environment:
+      RABBITMQ_DEFAULT_USER: girder
+      RABBITMQ_DEFAULT_PASS: girder-e2e
+      RABBITMQ_DEFAULT_VHOST: girder
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "check_port_connectivity"]
+      interval: 10s
+      timeout: 10s
+      retries: 12
+      start_period: 20s
+
+  worker:
+    image: rgc-e2e-girder:latest
+    profiles: ["worker"]
+    platform: linux/amd64
+    init: true
+    # From /, `import girder` would find the /girder source checkout as an empty
+    # namespace package; from /girder it finds the real package (as upstream does).
+    working_dir: /girder
+    entrypoint: ["celery", "-A", "girder_worker.app", "worker", "-Q", "local,celery",
+                 "-n", "local@%h", "--concurrency=1", "--loglevel=INFO"]
+    command: []
+    environment:
+      <<: *girder-env
+      C_FORCE_ROOT: "1"
+    volumes:
+      - girder-assetstore:/var/girder/assetstore
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+      girder:
+        condition: service_healthy
+
+  # ---- tools ---------------------------------------------------------------------------
+  # Synthetic DICOM generator (pydicom). ./run.sh fixtures
+  fixtures:
+    build:
+      context: ./fixtures
+    image: rgc-e2e-fixtures:latest
+    profiles: ["tools"]
+    volumes:
+      - ./fixtures/out:/out
+
+volumes:
+  mariadb-data:
+  mongo-data:
+  girder-assetstore:

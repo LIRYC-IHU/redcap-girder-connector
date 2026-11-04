@@ -4,8 +4,78 @@ namespace ExternalModules\GirderUploaderModule;
 
 use ExternalModules\AbstractExternalModule;
 
+require_once __DIR__ . '/Voprf.php';
+
 class GirderUploaderModule extends AbstractExternalModule
 {
+    /** System setting: the OPRF key behind every pseudonym (hex scalar). */
+    const PSEUDONYM_KEY_SETTING = 'pseudonym-redcap-key';
+    /** System setting: evaluations accepted per project and per 24 hours. */
+    const PSEUDONYM_LIMIT_SETTING = 'pseudonym-daily-limit';
+    const PSEUDONYM_DEFAULT_DAILY_LIMIT = 500;
+    /** Project setting: separates one project's pseudonyms from another's. */
+    const PSEUDONYM_DOMAIN_SETTING = 'pseudonym-domain';
+    /** Project checkbox: compare each upload's fingerprint with the record's. */
+    const PSEUDONYM_CHECK_SETTING = 'pseudonym-fingerprint-check';
+    /** Internal project settings, one per record: the stored fingerprint. */
+    const PSEUDONYM_FINGERPRINT_PREFIX = 'pseudonym-fingerprint:';
+    /** Log message counted by the rate limit. */
+    const PSEUDONYM_EVALUATION_LOG = 'pseudonym-evaluate';
+    /** Log message of an upload confirmed despite a fingerprint mismatch. */
+    const PSEUDONYM_OVERRIDE_LOG = '[PSEUDONYM] fingerprint mismatch confirmed by the uploader';
+    const PSEUDONYM_TICKET_TTL_SECONDS = 3600;
+    const PSEUDONYM_TICKET_MATCH = 'match';
+    const PSEUDONYM_TICKET_OVERRIDE = 'override';
+
+    public function redcap_module_system_enable($version)
+    {
+        $this->ensurePseudonymKey();
+    }
+
+    public function redcap_module_project_enable($version, $project_id)
+    {
+        $this->pseudonymDomain($project_id);
+    }
+
+    public function redcap_module_save_configuration($project_id)
+    {
+        if ($project_id) {
+            $this->pseudonymDomain($project_id);
+        } else {
+            $this->ensurePseudonymKey();
+        }
+    }
+
+    /**
+     * Called by REDCap before a settings form is saved; a returned string blocks
+     * the save and is shown to the user.
+     */
+    public function validateSettings($settings)
+    {
+        $key = isset($settings[self::PSEUDONYM_KEY_SETTING]) && is_scalar($settings[self::PSEUDONYM_KEY_SETTING])
+            ? trim((string) $settings[self::PSEUDONYM_KEY_SETTING])
+            : '';
+        if ($key !== '' && !Voprf::isValidKey($key)) {
+            return 'The REDCap pseudonym key must be 64 hexadecimal characters encoding a valid scalar, or left empty to have one generated.';
+        }
+
+        $domain = isset($settings[self::PSEUDONYM_DOMAIN_SETTING]) && is_scalar($settings[self::PSEUDONYM_DOMAIN_SETTING])
+            ? trim((string) $settings[self::PSEUDONYM_DOMAIN_SETTING])
+            : '';
+        if ($domain !== '' && !preg_match('/^[A-Za-z0-9:._-]{1,128}$/', $domain)) {
+            return 'The pseudonym domain may only hold letters, digits and the characters : . _ - (128 at most).';
+        }
+
+        $limit = isset($settings[self::PSEUDONYM_LIMIT_SETTING]) && is_scalar($settings[self::PSEUDONYM_LIMIT_SETTING])
+            ? trim((string) $settings[self::PSEUDONYM_LIMIT_SETTING])
+            : '';
+        if ($limit !== '' && (!ctype_digit($limit) || (int) $limit < 1)) {
+            return 'The pseudonym daily limit must be a positive whole number.';
+        }
+
+        return null;
+    }
+
     public function redcap_module_link_check_display($project_id, $link)
     {
         $settings = $this->loadSettings();
@@ -45,6 +115,10 @@ class GirderUploaderModule extends AbstractExternalModule
             'projectTitle' => $this->getProjectTitle($project_id),
             'instrument' => $instrument,
             'recordId' => $record,
+            'pseudonym' => [
+                'domain' => $this->pseudonymDomain($project_id),
+                'fingerprintCheck' => $this->isFingerprintCheckEnabled(),
+            ],
             'eventId' => $event_id,
             'instanceId' => $repeat_instance,
             'dagName' => $this->getDagName($group_id),
@@ -70,7 +144,7 @@ class GirderUploaderModule extends AbstractExternalModule
         print($this->initializeJavascriptModuleObject());
 
         $this->consolePrint('Javascript module object initialized: ' . $this->getJavascriptModuleObjectName());
-        print('<script>'. 'window.GirderUploaderConfig=' . json_encode($context, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) . ';' . 'window.GirderUploaderModule=' . $this->getJavascriptModuleObjectName() . ';' . '</script>');
+        print('<script>'. 'window.GirderUploaderConfig=' . $this->encodeForInlineScript($context) . ';' . 'window.GirderUploaderModule=' . $this->getJavascriptModuleObjectName() . ';' . '</script>');
         if (file_exists(__DIR__ . '/js/vendor/jszip.min.js')) {
             $this->includeJs('./js/vendor/jszip.min.js');
         } else {
@@ -96,7 +170,7 @@ class GirderUploaderModule extends AbstractExternalModule
             'group_id' => (int) $group_id,
         ]);
 
-        if (in_array($action, ['init-batch', 'init-file-upload', 'upload-file'], true)
+        if (in_array($action, ['init-batch', 'init-file-upload', 'upload-file', 'pseudonym-evaluate', 'pseudonym-check', 'pseudonym-register'], true)
             && !$this->isUsableRecordId($record)) {
             $this->debugAjax('rejected: the record does not exist yet', [
                 'action' => (string) $action,
@@ -114,7 +188,23 @@ class GirderUploaderModule extends AbstractExternalModule
                     'error' => 'Uploads are disabled because this instrument is read-only for the current user.',
                 ];
             }
-            return $this->handleInitBatch($payload, (int) $project_id, (string) $instrument, $group_id, (string) $record, (int) $repeat_instance);
+            return $this->handleInitBatch($payload, (int) $project_id, (string) $instrument, $group_id, (string) $record, (int) $repeat_instance, (int) $event_id);
+        }
+
+        if (in_array($action, ['pseudonym-evaluate', 'pseudonym-check', 'pseudonym-register'], true)) {
+            if (!$this->userCanModifyInstrument((string) $instrument)) {
+                return [
+                    'ok' => false,
+                    'error' => 'Uploads are disabled because this instrument is read-only for the current user.',
+                ];
+            }
+            if ($action === 'pseudonym-evaluate') {
+                return $this->handlePseudonymEvaluate($payload, (int) $project_id, (string) $instrument, (string) $record);
+            }
+            if ($action === 'pseudonym-check') {
+                return $this->handlePseudonymCheck($payload, (int) $project_id, (string) $instrument, (string) $record, $group_id);
+            }
+            return $this->handlePseudonymRegister($payload, (int) $project_id, (string) $instrument, (string) $record);
         }
 
         if ($action === 'upload-file') {
@@ -148,7 +238,7 @@ class GirderUploaderModule extends AbstractExternalModule
                     'error' => 'Deletion is disabled because this instrument is read-only for the current user.',
                 ];
             }
-            return $this->handleDeleteUploadContents($payload, (int) $project_id, (string) $instrument);
+            return $this->handleDeleteUploadContents($payload, (int) $project_id, (string) $instrument, (string) $record);
         }
 
         $this->debugAjax('Unknown AJAX action', [
@@ -161,7 +251,17 @@ class GirderUploaderModule extends AbstractExternalModule
         ];
     }
 
-    private function handleInitBatch($payload, $projectId, $instrument, $groupId, $record, $repeatInstance)
+    /**
+     * JSON for an inline <script>. The project title and the settings are free
+     * text: without the hex flags, a `</script>` in one of them would end the
+     * block and run what follows on every user opening the form.
+     */
+    private function encodeForInlineScript($value)
+    {
+        return json_encode($value, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP);
+    }
+
+    private function handleInitBatch($payload, $projectId, $instrument, $groupId, $record, $repeatInstance, $eventId = 0)
     {
         $data = is_array($payload) ? $payload : [];
         $fieldName = isset($data['fieldName']) ? (string) $data['fieldName'] : '';
@@ -212,6 +312,33 @@ class GirderUploaderModule extends AbstractExternalModule
             ];
         }
 
+        // A page opened before the module was updated runs the old deidentification
+        // and declares no file as deidentified: it would slip past the check below.
+        if (!array_key_exists('pseudonymTicket', $data)) {
+            $this->debugAjax('init-batch rejected: page older than the module');
+            return [
+                'ok' => false,
+                'error' => 'This page was opened before the module was updated. Reload it and start the upload again. Nothing was uploaded.',
+            ];
+        }
+
+        $carriesDeidentifiedFiles = false;
+        foreach ($files as $fileInfo) {
+            if (is_array($fileInfo) && !empty($fileInfo['deidentified'])) {
+                $carriesDeidentifiedFiles = true;
+                break;
+            }
+        }
+        $ticket = isset($data['pseudonymTicket']) ? (string) $data['pseudonymTicket'] : '';
+        if ($carriesDeidentifiedFiles && $this->isFingerprintCheckEnabled()
+            && !$this->verifyPseudonymTicket($projectId, $record, $ticket)) {
+            $this->debugAjax('init-batch rejected: no valid pseudonym ticket');
+            return [
+                'ok' => false,
+                'error' => 'The patient fingerprint of this upload was not checked against the record. Start the upload again.',
+            ];
+        }
+
         try {
             $dagName = $this->sanitizePathPart($this->getDagName($groupId), 'NO_DAG');
             $recordId = $this->sanitizePathPart($record, 'UNASSIGNED_RECORD');
@@ -222,7 +349,8 @@ class GirderUploaderModule extends AbstractExternalModule
 
             $dagFolder = $this->ensureFolder($settings, 'collection', (string) $settings['rootCollectionId'], $dagName);
             $recordFolder = $this->ensureFolder($settings, 'folder', (string) $dagFolder['_id'], $recordId);
-            $fieldFolder = $this->ensureFolder($settings, 'folder', (string) $recordFolder['_id'], $fieldFolderName);
+            $eventFolder = $this->ensureFolder($settings, 'folder', (string) $recordFolder['_id'], $this->eventFolderName($eventId));
+            $fieldFolder = $this->ensureFolder($settings, 'folder', (string) $eventFolder['_id'], $fieldFolderName);
             $dicomFlatItemNameBySourceFolder = [];
             $preserveUploadFolderArchitecture = !empty($settings['preserveUploadFolderArchitecture']);
 
@@ -502,7 +630,7 @@ class GirderUploaderModule extends AbstractExternalModule
         }
     }
 
-    private function handleDeleteUploadContents($payload, $projectId, $instrument)
+    private function handleDeleteUploadContents($payload, $projectId, $instrument, $record = '')
     {
         $data = is_array($payload) ? $payload : [];
         $fieldName = isset($data['fieldName']) ? (string) $data['fieldName'] : '';
@@ -532,10 +660,18 @@ class GirderUploaderModule extends AbstractExternalModule
         }
 
         try {
+            try {
+                $recordFolderId = $this->recordFolderIdOf($settings, $folderId);
+            } catch (\Throwable $error) {
+                // Already gone: deletion stays idempotent, the fingerprint stays.
+                $recordFolderId = '';
+            }
             $deleted = $this->deleteFolderTree($settings, $folderId);
+            $fingerprintCleared = $this->clearFingerprintIfRecordIsEmpty($settings, (string) $record, $recordFolderId, $folderId);
             return [
                 'ok' => true,
                 'deleted' => $deleted,
+                'fingerprintCleared' => $fingerprintCleared,
             ];
         } catch (\Throwable $exception) {
             return [
@@ -543,6 +679,426 @@ class GirderUploaderModule extends AbstractExternalModule
                 'error' => $exception->getMessage(),
             ];
         }
+    }
+
+    /**
+     * Evaluate the browser's blinded element with the module's key, with a proof
+     * that this key was used. The NIP is never seen here: only a uniformly
+     * random group element. See docs/design/pseudonymisation.md.
+     */
+    private function handlePseudonymEvaluate($payload, $projectId, $instrument, $record)
+    {
+        $data = is_array($payload) ? $payload : [];
+        $fieldName = isset($data['fieldName']) ? (string) $data['fieldName'] : '';
+        $blinded = isset($data['blindedElement']) ? (string) $data['blindedElement'] : '';
+
+        if (!in_array($fieldName, $this->getGirderUploadFields($projectId, $instrument), true)) {
+            return ['ok' => false, 'error' => 'Field is not allowed for Girder upload.'];
+        }
+        if (!Voprf::isAvailable()) {
+            return [
+                'ok' => false,
+                'error' => "This server's PHP cannot compute pseudonyms: it needs the sodium extension with ristretto255 (PHP 8.1 or later, libsodium 1.0.18 or later).",
+            ];
+        }
+        $key = $this->ensurePseudonymKey();
+        if ($key === '') {
+            return [
+                'ok' => false,
+                'error' => 'The REDCap pseudonym key is not set: an administrator must save the module settings in the Control Center.',
+            ];
+        }
+
+        $limit = $this->pseudonymDailyLimit();
+        if ($this->countRecentPseudonymEvaluations() >= $limit) {
+            $this->log('[PSEUDONYM] daily limit reached', ['limit' => $limit]);
+            return [
+                'ok' => false,
+                'code' => 'rate-limit',
+                'error' => "The project's pseudonym limit ({$limit} per 24 hours) is reached. Try again later or ask an administrator.",
+            ];
+        }
+
+        try {
+            $evaluation = Voprf::blindEvaluate($key, $blinded);
+        } catch (\InvalidArgumentException $error) {
+            return ['ok' => false, 'error' => 'Invalid pseudonym request: ' . $error->getMessage()];
+        }
+
+        $this->log(self::PSEUDONYM_EVALUATION_LOG, ['record' => (string) $record]);
+
+        return array_merge(['ok' => true], $evaluation);
+    }
+
+    /**
+     * Before the uploader confirms: compare the upload's fingerprint with the
+     * one stored for the record, without storing anything, and say how many
+     * uploads the record already holds. `new` means no fingerprint yet, which
+     * with earlier uploads means they predate the fingerprints. `mismatch` is
+     * shown to the uploader, who decides.
+     *
+     * Girder is checked here too: past this point the fingerprint gets stored,
+     * and an upload that then could not start would leave it behind with no
+     * content to delete it through.
+     */
+    private function handlePseudonymCheck($payload, $projectId, $instrument, $record, $groupId = null)
+    {
+        $fingerprint = $this->validatedFingerprint($payload, $projectId, $instrument);
+        if (is_array($fingerprint)) {
+            return $fingerprint;
+        }
+        try {
+            $settings = $this->loadSettings();
+            $this->assertGirderReachable($settings);
+            $existingUploads = $this->countRecordUploads($settings, $groupId, $record);
+        } catch (\Throwable $error) {
+            return ['ok' => false, 'error' => 'Girder is unavailable: ' . $error->getMessage()];
+        }
+
+        $status = 'unchecked';
+        if ($this->isFingerprintCheckEnabled()) {
+            $stored = strtolower(trim((string) $this->getProjectSetting($this->fingerprintSettingKey($record))));
+            if ($stored === '') {
+                $status = 'new';
+            } elseif (hash_equals($stored, $fingerprint)) {
+                $status = 'matched';
+            } else {
+                $status = 'mismatch';
+                $this->log('[PSEUDONYM] fingerprint mismatch', ['record' => (string) $record]);
+            }
+        }
+        return ['ok' => true, 'status' => $status, 'existingUploads' => $existingUploads];
+    }
+
+    /**
+     * Once the uploader has confirmed: store the fingerprint on the record's
+     * first upload — or check it again, another upload may have stored one in
+     * the meantime — and hand back the ticket `init-batch` requires.
+     *
+     * A mismatch goes through only with `confirmedMismatch`, the uploader having
+     * seen it. The record keeps its fingerprint and the override leaves a trace.
+     * One that appears only now was never shown, so it is refused.
+     */
+    private function handlePseudonymRegister($payload, $projectId, $instrument, $record)
+    {
+        $fingerprint = $this->validatedFingerprint($payload, $projectId, $instrument);
+        if (is_array($fingerprint)) {
+            return $fingerprint;
+        }
+        if (!$this->isFingerprintCheckEnabled()) {
+            return ['ok' => true, 'status' => 'unchecked'];
+        }
+        if ($this->ensurePseudonymKey() === '') {
+            return ['ok' => false, 'error' => 'The REDCap pseudonym key is not set.'];
+        }
+        $confirmedMismatch = isset($payload['confirmedMismatch']) && $payload['confirmedMismatch'] === true;
+        $fieldName = (string) $payload['fieldName'];
+
+        return $this->withRecordLock($projectId, $record, function () use ($projectId, $record, $fingerprint, $confirmedMismatch, $fieldName) {
+            $settingKey = $this->fingerprintSettingKey($record);
+            $stored = strtolower(trim((string) $this->getProjectSetting($settingKey)));
+            $overridden = false;
+            if ($stored === '') {
+                $this->setProjectSetting($settingKey, $fingerprint);
+                $status = 'registered';
+            } elseif (hash_equals($stored, $fingerprint)) {
+                $status = 'matched';
+            } elseif ($confirmedMismatch) {
+                $overridden = true;
+                $status = 'overridden';
+                $this->recordMismatchOverride($record, $fieldName);
+            } else {
+                $this->log('[PSEUDONYM] fingerprint mismatch', ['record' => (string) $record]);
+                return $this->fingerprintMismatch();
+            }
+
+            return [
+                'ok' => true,
+                'status' => $status,
+                'ticket' => $this->issuePseudonymTicket($projectId, $record, $fingerprint, $overridden),
+            ];
+        });
+    }
+
+    /** The alert of an override: the module's log, and the project's for its users. */
+    private function recordMismatchOverride($record, $fieldName)
+    {
+        $this->log(self::PSEUDONYM_OVERRIDE_LOG, ['record' => (string) $record, 'field' => $fieldName]);
+        $this->logProjectEvent(
+            'Girder Uploader: patient signature mismatch confirmed',
+            "Upload to field {$fieldName} confirmed although its patient signature differs from the record's earlier uploads.",
+            $record
+        );
+    }
+
+    /** An entry of the project's Logging page. */
+    protected function logProjectEvent($description, $changes, $record)
+    {
+        \REDCap::logEvent($description, $changes, null, (string) $record);
+    }
+
+    /** Throws unless Girder answers for the project's collection. */
+    protected function assertGirderReachable($settings)
+    {
+        $this->girderRequestJson($settings, 'GET', '/collection/' . rawurlencode((string) $settings['rootCollectionId']), null);
+    }
+
+    /** The record's earlier uploads. */
+    protected function countRecordUploads($settings, $groupId, $record)
+    {
+        $dagName = $this->sanitizePathPart($this->getDagName($groupId), 'NO_DAG');
+        $dagFolder = $this->findChildFolder($settings, 'collection', (string) $settings['rootCollectionId'], $dagName);
+        if ($dagFolder === null) {
+            return 0;
+        }
+        $recordName = $this->sanitizePathPart($record, 'UNASSIGNED_RECORD');
+        $recordFolder = $this->findChildFolder($settings, 'folder', (string) $dagFolder['_id'], $recordName);
+        return $recordFolder === null ? 0 : $this->countUploadsUnder($settings, (string) $recordFolder['_id']);
+    }
+
+    /**
+     * Field folders holding something under a record folder, leaving one out:
+     * under an event, or directly under the record for uploads made before 2.0.0.
+     */
+    private function countUploadsUnder($settings, $recordFolderId, $ignoredFolderId = '')
+    {
+        $fieldFolders = [];
+        foreach ($this->listChildFolders($settings, $recordFolderId) as $folder) {
+            if ($this->isEventFolderName($folder['name'] ?? '')) {
+                $fieldFolders = array_merge($fieldFolders, $this->listChildFolders($settings, (string) $folder['_id']));
+            } else {
+                $fieldFolders[] = $folder;
+            }
+        }
+
+        $count = 0;
+        foreach ($fieldFolders as $folder) {
+            if ((string) $folder['_id'] === (string) $ignoredFolderId) {
+                continue;
+            }
+            if ($this->folderHoldsSomething($settings, (string) $folder['_id'])) {
+                $count += 1;
+            }
+        }
+        return $count;
+    }
+
+    protected function folderHoldsSomething($settings, $folderId)
+    {
+        $details = $this->girderRequestJson($settings, 'GET', '/folder/' . rawurlencode((string) $folderId) . '/details', null);
+        return (int) ($details['nItems'] ?? 0) + (int) ($details['nFolders'] ?? 0) > 0;
+    }
+
+    /** `{event_id} ({event_name})`, the level between a record and its field folders. */
+    private function eventFolderName($eventId)
+    {
+        return $this->sanitizePathPart((int) $eventId . ' (' . $this->eventName($eventId) . ')', (string) (int) $eventId);
+    }
+
+    /** Field names start with a letter, so a field folder cannot look like this. */
+    private function isEventFolderName($name)
+    {
+        return preg_match('/^\d+ \(.*\)$/', (string) $name) === 1;
+    }
+
+    /** Read from the table: REDCap's own getter answers only in longitudinal projects. */
+    protected function eventName($eventId)
+    {
+        $row = $this->query('SELECT descrip FROM redcap_events_metadata WHERE event_id = ?', [(int) $eventId])->fetch_assoc();
+        return is_array($row) && isset($row['descrip']) ? (string) $row['descrip'] : '';
+    }
+
+    /**
+     * The record folder above a field folder, by position: collection, DAG,
+     * record. Names cannot tell, a record may well be called `123`.
+     */
+    protected function recordFolderIdOf($settings, $folderId)
+    {
+        $path = $this->girderRequestJson($settings, 'GET', '/folder/' . rawurlencode((string) $folderId) . '/rootpath', null);
+        return is_array($path) && isset($path[2]['object']['_id']) ? (string) $path[2]['object']['_id'] : '';
+    }
+
+    /** The payload's fingerprint, or the error to answer with. */
+    private function validatedFingerprint($payload, $projectId, $instrument)
+    {
+        $data = is_array($payload) ? $payload : [];
+        $fieldName = isset($data['fieldName']) ? (string) $data['fieldName'] : '';
+        $fingerprint = isset($data['fingerprint']) ? strtolower(trim((string) $data['fingerprint'])) : '';
+
+        if (!in_array($fieldName, $this->getGirderUploadFields($projectId, $instrument), true)) {
+            return ['ok' => false, 'error' => 'Field is not allowed for Girder upload.'];
+        }
+        if (!preg_match('/^[0-9a-f]{2}$/', $fingerprint)) {
+            return ['ok' => false, 'error' => 'Invalid patient fingerprint.'];
+        }
+        return $fingerprint;
+    }
+
+    private function fingerprintMismatch()
+    {
+        return [
+            'ok' => false,
+            'code' => 'fingerprint-mismatch',
+            'error' => 'Another upload has just stored a different patient for this record. Nothing was uploaded: start again to review the difference.',
+        ];
+    }
+
+    /** `redcap:<pid>` unless the project says otherwise; persisted once known. */
+    private function pseudonymDomain($projectId)
+    {
+        $domain = trim((string) $this->getProjectSetting(self::PSEUDONYM_DOMAIN_SETTING, $projectId));
+        if ($domain !== '') {
+            return $domain;
+        }
+        $domain = 'redcap:' . (int) $projectId;
+        try {
+            $this->setProjectSetting(self::PSEUDONYM_DOMAIN_SETTING, $domain, $projectId);
+        } catch (\Throwable $error) {
+            // Derived from the project id, so it is the same whether stored or not.
+        }
+        return $domain;
+    }
+
+    private function isFingerprintCheckEnabled()
+    {
+        return $this->readBoolSettingTreatEmptyAsFalse(self::PSEUDONYM_CHECK_SETTING, true);
+    }
+
+    /**
+     * The OPRF key, created on first use. An administrator creates it
+     * by enabling the module or saving its system settings; the lazy creation
+     * covers installations enabled earlier, and fails closed.
+     */
+    private function ensurePseudonymKey()
+    {
+        $key = strtolower(trim((string) $this->getSystemSetting(self::PSEUDONYM_KEY_SETTING)));
+        if ($key !== '') {
+            return Voprf::isValidKey($key) ? $key : '';
+        }
+        try {
+            $this->setSystemSetting(self::PSEUDONYM_KEY_SETTING, Voprf::generateKey());
+        } catch (\Throwable $error) {
+            $this->log('[PSEUDONYM] could not create the REDCap key: ' . $error->getMessage());
+            return '';
+        }
+        $key = strtolower(trim((string) $this->getSystemSetting(self::PSEUDONYM_KEY_SETTING)));
+        return Voprf::isValidKey($key) ? $key : '';
+    }
+
+    private function pseudonymDailyLimit()
+    {
+        $value = trim((string) $this->getSystemSetting(self::PSEUDONYM_LIMIT_SETTING));
+        return ctype_digit($value) && (int) $value > 0 ? (int) $value : self::PSEUDONYM_DEFAULT_DAILY_LIMIT;
+    }
+
+    /** Evaluations logged for this project over the last 24 hours. */
+    protected function countRecentPseudonymEvaluations()
+    {
+        $result = $this->queryLogs(
+            'select count(1) as evaluations where message = ? and timestamp > ?',
+            [self::PSEUDONYM_EVALUATION_LOG, date('Y-m-d H:i:s', time() - 86400)]
+        );
+        $row = $result ? $result->fetch_assoc() : null;
+        return $row ? (int) $row['evaluations'] : 0;
+    }
+
+    private function fingerprintSettingKey($record)
+    {
+        // Setting keys are bounded in length; record ids are not.
+        $record = (string) $record;
+        return self::PSEUDONYM_FINGERPRINT_PREFIX . (strlen($record) <= 64 ? $record : sha1($record));
+    }
+
+    /**
+     * Run `$body` holding a database lock on the record, so that two first
+     * uploads cannot both store a fingerprint.
+     */
+    private function withRecordLock($projectId, $record, callable $body)
+    {
+        $name = 'girder_uploader_fp_' . sha1((int) $projectId . '|' . (string) $record);
+        if (!$this->acquireDatabaseLock($name)) {
+            return [
+                'ok' => false,
+                'error' => 'Another upload is being checked for this record. Try again in a moment.',
+            ];
+        }
+        try {
+            return $body();
+        } finally {
+            $this->releaseDatabaseLock($name);
+        }
+    }
+
+    protected function acquireDatabaseLock($name)
+    {
+        $result = $this->query('SELECT GET_LOCK(?, 10) AS acquired', [(string) $name]);
+        $row = $result ? $result->fetch_assoc() : null;
+        return $row && (int) $row['acquired'] === 1;
+    }
+
+    protected function releaseDatabaseLock($name)
+    {
+        $this->query('SELECT RELEASE_LOCK(?) AS released', [(string) $name]);
+    }
+
+    private function pseudonymTicketKey()
+    {
+        return hash_hmac('sha256', 'girder-uploader-pseudonym-ticket', $this->ensurePseudonymKey(), true);
+    }
+
+    private function pseudonymTicketMac($projectId, $record, $fingerprint, $expires, $mode)
+    {
+        return hash_hmac('sha256', implode('|', [(int) $projectId, (string) $record, $fingerprint, (int) $expires, $mode]), $this->pseudonymTicketKey());
+    }
+
+    private function issuePseudonymTicket($projectId, $record, $fingerprint, $overridden = false)
+    {
+        $expires = time() + self::PSEUDONYM_TICKET_TTL_SECONDS;
+        $mode = $overridden ? self::PSEUDONYM_TICKET_OVERRIDE : self::PSEUDONYM_TICKET_MATCH;
+        return implode('.', [$expires, $fingerprint, $mode, $this->pseudonymTicketMac($projectId, $record, $fingerprint, $expires, $mode)]);
+    }
+
+    /**
+     * A ticket is valid for its record, within its hour, and only while the
+     * record has a fingerprint: its own, unless the uploader overrode a mismatch.
+     */
+    private function verifyPseudonymTicket($projectId, $record, $ticket)
+    {
+        $parts = explode('.', (string) $ticket);
+        if (count($parts) !== 4 || !ctype_digit($parts[0]) || (int) $parts[0] < time()) {
+            return false;
+        }
+        [$expires, $fingerprint, $mode, $mac] = $parts;
+        if ($this->ensurePseudonymKey() === '') {
+            return false;
+        }
+        if (!hash_equals($this->pseudonymTicketMac($projectId, $record, $fingerprint, $expires, $mode), $mac)) {
+            return false;
+        }
+        $stored = strtolower(trim((string) $this->getProjectSetting($this->fingerprintSettingKey($record))));
+        if ($stored === '') {
+            return false;
+        }
+        return $mode === self::PSEUDONYM_TICKET_OVERRIDE || hash_equals($stored, $fingerprint);
+    }
+
+    /**
+     * A wrongly registered fingerprint must be correctable: once nothing is left
+     * under the record in Girder, its fingerprint goes too.
+     */
+    private function clearFingerprintIfRecordIsEmpty($settings, $record, $recordFolderId, $deletedFolderId)
+    {
+        if ($record === '' || $recordFolderId === '') {
+            return false;
+        }
+        // Girder may still be deleting the folder: it does not count, whatever it holds.
+        if ($this->countUploadsUnder($settings, $recordFolderId, $deletedFolderId) > 0
+            || !empty($this->listItemsInFolder($settings, $recordFolderId))) {
+            return false;
+        }
+        $this->removeProjectSetting($this->fingerprintSettingKey($record));
+        $this->log('[PSEUDONYM] fingerprint cleared with the record contents', ['record' => (string) $record]);
+        return true;
     }
 
     private function loadSettings()
@@ -570,14 +1126,14 @@ class GirderUploaderModule extends AbstractExternalModule
             'maxRetries' => $this->readIntSetting('max-retries', 3),
             'retryDelay' => $this->readIntSetting('retry-delay', 1000),
             'deidentifyDicom' => $this->readBoolSettingTreatEmptyAsFalse('deidentify-dicom', true),
-            'deidentifyXmlEcg' => $this->readBoolSetting('deidentify-xml-ecg', false),
-            'deidentifySchillerHolter' => $this->readBoolSetting('deidentify-schiller-holter', false),
-            'preserveUploadFolderArchitecture' => $this->readBoolSettingTreatEmptyAsFalse('preserve-upload-folder-architecture', true),
+            'deidentifyXmlEcg' => $this->readBoolSettingTreatEmptyAsFalse('deidentify-xml-ecg', true),
+            'deidentifySchillerHolter' => $this->readBoolSettingTreatEmptyAsFalse('deidentify-schiller-holter', true),
+            'preserveUploadFolderArchitecture' => $this->readBoolSettingTreatEmptyAsFalse('preserve-upload-folder-architecture', false),
         ];
         return $settings;
     }
 
-    private function getGirderUploadFields($projectId, $instrument)
+    protected function getGirderUploadFields($projectId, $instrument)
     {
         if (!class_exists('REDCap')) {
             return [];
@@ -628,19 +1184,35 @@ class GirderUploaderModule extends AbstractExternalModule
 			return $group_name ? $group_name : null;
 		}
 
+    /**
+     * May the current user upload to, or delete from, this instrument?
+     *
+     * Anything we cannot establish is a refusal: no instrument, no user, a user
+     * who is not on the project, an instrument missing from their rights.
+     */
     private function userCanModifyInstrument($instrument)
     {
         if (!is_string($instrument) || trim($instrument) === '') {
             return false;
         }
 
-        if (!method_exists($this, 'getProject')) {
-            return true;
-        }
+        return self::formRightAllowsEditing($this->currentUserFormRight($instrument));
+    }
 
-        $project = $this->getProject();
-        if (!$project || !method_exists($project, 'getRights')) {
-            return true;
+    /**
+     * The current user's encoded data viewing right on an instrument, or null
+     * when they have none.
+     *
+     * REDCap's own `$user_rights` comes first: it is what REDCap enforces on this
+     * request, with roles, super users, impersonation and the read-only
+     * downgrade of a project whose data is locked already applied. Without it,
+     * the right is read from the project's user rights through the framework.
+     */
+    private function currentUserFormRight($instrument)
+    {
+        $globalRights = isset($GLOBALS['user_rights']) ? $GLOBALS['user_rights'] : null;
+        if (is_array($globalRights) && isset($globalRights['forms']) && is_array($globalRights['forms'])) {
+            return isset($globalRights['forms'][$instrument]) ? $globalRights['forms'][$instrument] : null;
         }
 
         $username = defined('USERID') ? (string) USERID : '';
@@ -648,20 +1220,66 @@ class GirderUploaderModule extends AbstractExternalModule
             $username = (string) $GLOBALS['userid'];
         }
         if ($username === '') {
-            return true;
+            return null;
+        }
+
+        $project = $this->getProject();
+        if (!$project) {
+            return null;
         }
 
         $userRights = $project->getRights($username);
-        if (!is_array($userRights) || !isset($userRights['forms']) || !is_array($userRights['forms'])) {
-            return true;
+        if (!is_array($userRights)) {
+            // Not on the project. REDCap still lets a super user in, with the
+            // view & edit + delete right it grants super users on every form.
+            return $this->getUser($username)->isSuperUser() ? '146' : null;
         }
 
-        $formRights = isset($userRights['forms'][$instrument]) ? (string) $userRights['forms'][$instrument] : '';
-        if ($formRights === '') {
+        if (isset($userRights['forms']) && is_array($userRights['forms'])) {
+            return isset($userRights['forms'][$instrument]) ? $userRights['forms'][$instrument] : null;
+        }
+
+        // The raw `data_entry` column, e.g. "[demographics,1][uploads,130]".
+        $data = isset($userRights['data_entry']) ? (string) $userRights['data_entry'] : '';
+        if (!preg_match_all('/\[([^,\]]+)(?:,([^\]]*))?\]/', $data, $matches, PREG_SET_ORDER)) {
+            return null;
+        }
+        foreach ($matches as $match) {
+            if ($match[1] === $instrument) {
+                return isset($match[2]) ? $match[2] : '0';
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * Does an encoded data viewing right allow editing the instrument?
+     *
+     * Mirrors REDCap's UserRights::hasDataViewingRights($value, 'view-edit'),
+     * which only exists in recent versions, and keeps both encodings working:
+     *
+     * - legacy (below 128): 0 no access, 1 view & edit, 2 read-only,
+     *   3 view & edit + edit survey responses;
+     * - bitmask (REDCap 15): 128 marks it, then 1 read-only, 2 view & edit,
+     *   8 edit survey responses, 16 delete records. 130, 138, 146 and 154 all
+     *   carry view & edit.
+     */
+    private static function formRightAllowsEditing($value)
+    {
+        if (is_int($value)) {
+            $value = (string) $value;
+        }
+        if (!is_string($value) || !ctype_digit(trim($value))) {
             return false;
         }
 
-        return in_array($formRights, ['2', '3'], true);
+        $value = (int) trim($value);
+        if ($value < 128) {
+            return $value === 1 || $value === 3;
+        }
+
+        return ($value & 2) === 2;
     }
 
     /**
@@ -740,7 +1358,21 @@ class GirderUploaderModule extends AbstractExternalModule
         return $this->girderRequestJsonOrNull($settings, 'GET', '/folder/' . rawurlencode((string) $folderId), null, [], [404]);
     }
 
-    private function listChildFolders($settings, $folderId)
+    /** The folder of that name under its parent, or null: unlike ensureFolder, creates nothing. */
+    private function findChildFolder($settings, $parentType, $parentId, $name)
+    {
+        $query = http_build_query([
+            'parentType' => $parentType,
+            'parentId' => $parentId,
+            'name' => $name,
+            'limit' => 1,
+        ]);
+
+        $folders = $this->girderRequestJson($settings, 'GET', '/folder?' . $query, null);
+        return is_array($folders) && !empty($folders) ? $folders[0] : null;
+    }
+
+    protected function listChildFolders($settings, $folderId)
     {
         $query = http_build_query([
             'parentType' => 'folder',

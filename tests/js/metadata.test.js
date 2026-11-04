@@ -174,3 +174,47 @@ test('carrying forward leaves a clean payload alone', () => {
     assert.equal(fromGirder.rejectedCount, 0);
     assert.equal(core.carryRejectionsForward({}, null), null);
 });
+
+// As v1.2.0 to v1.3.0 wrote it, straight from the upload: the full `girder`
+// block, no summary, no rejections.
+const V1_2_PAYLOAD = {
+    version: 1,
+    uploadedAt: '2025-03-01T10:00:00.000Z',
+    uploadedFiles: [{ name: 'scan.dcm', size: 2048, mimeType: 'application/dicom', folderId: 'f1', itemId: 'i1', uploadId: 'u1', fileId: 'x1' }],
+    totalSizeBytes: 2048,
+    uploadState: { status: 'completed', stage: 'done', updatedAt: '2025-03-01T10:00:00.000Z', error: null },
+    girder: { baseUrl: 'https://girder.example.org', parentFolderId: 'abc123', folderId: 'f1', itemId: 'i1' }
+};
+
+test('metadata written by 1.x still reads as a completed upload', () => {
+    const payload = core.normalizeMetadataPayload(JSON.parse(JSON.stringify(V1_2_PAYLOAD)));
+
+    assert.equal(core.isCompletedPayload(payload), true);
+    assert.equal(payload.uploadSummary.fileCount, 1);
+    assert.deepEqual(payload.rejectedFiles, []);
+    assert.equal(payload.girder.parentFolderUrl, 'https://girder.example.org/#folder/abc123');
+    assert.equal(payload.patientAlert, undefined);
+});
+
+test('metadata written by 1.x is rewritten without loss or a false alert', () => {
+    const stored = core.buildStoredMetadataPayload(core.normalizeMetadataPayload(JSON.parse(JSON.stringify(V1_2_PAYLOAD))));
+
+    assert.equal(stored.patientAlert, null);
+    assert.equal(stored.uploadSummary.fileCount, 1);
+    assert.equal(stored.girder.parentFolderId, 'abc123');
+});
+
+test('a confirmed mismatch stays on the field', () => {
+    const alert = { type: 'fingerprint-mismatch', confirmedAt: '2026-11-04T10:00:00.000Z' };
+    const stored = core.buildStoredMetadataPayload({
+        uploadedFiles: uploadedFiles(1),
+        patientAlert: alert,
+        girder: { parentFolderId: 'abc123' }
+    });
+
+    assert.deepEqual(stored.patientAlert, alert);
+    // Girder knows nothing of it: a refreshed snapshot must not lose it.
+    const refreshed = core.carryPatientAlertForward(stored, { uploadedFiles: [] });
+    assert.deepEqual(refreshed.patientAlert, alert);
+    assert.equal('patientAlert' in core.carryPatientAlertForward({}, { uploadedFiles: [] }), false);
+});

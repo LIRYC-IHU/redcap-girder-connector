@@ -1,5 +1,121 @@
 # Changelog
 
+## 2.0.0
+
+Design and threat model:
+[`docs/design/pseudonymisation.md`](docs/design/pseudonymisation.md).
+
+### Added — patient pseudonym
+
+- **Every deidentified file is tied to its patient by a pseudonym computed from
+  its NIP**, through a verifiable OPRF (RFC 9497, ristretto255-SHA512) keyed on
+  REDCap. The browser blinds the NIP, so it never reaches the server; the key
+  never leaves the server; and the server proves it used the key it publishes.
+- **The record's earlier uploads are checked against the new one.** Its first
+  upload stores a two-character signature of the patient (one byte of a keyed
+  hash: it says two uploads are *a priori* the same patient, misses a wrong one
+  1 time in 256, and cannot be traced back to a NIP); a later upload that does
+  not match raises an alert before anything is sent. The check is a project
+  checkbox, `pseudonym-fingerprint-check`, ticked by default. Deleting a record's content
+  clears its fingerprint once nothing is left under the record in Girder.
+- **The uploader reviews the transfer before anything is sent**, in a REDCap
+  window like the Online Designer's: last and first name, date of birth, NIP,
+  each DICOM series (modality, description, file count), ECG and Holter counts,
+  and the result of the check. It stays in the browser, and the fingerprint is
+  stored only once the uploader has confirmed. Cancelling leaves the field and
+  the form as they were.
+- **A mismatch can be confirmed.** The window turns to a red alert and offers
+  **Upload anyway**. The record keeps its fingerprint, and the override is written
+  to the project's Logging page, to the module's log and to the field, where the
+  widget keeps showing it. A mismatch that appears only after the uploader
+  confirmed, because of a simultaneous upload, is refused: nobody saw it.
+- A file to deidentify **without a NIP** is set aside with its reason; a batch
+  spanning **several patients** is refused as a whole.
+
+### Added — event folder
+
+- **Files are stored under `{record}/{event_id} ({event_name})/{field}`.** The same
+  field on two events of a longitudinal project used to share one folder. Uploads
+  sent before stay where they are.
+
+### Fixed — security
+
+- **Uploads and deletions follow the user's rights on the instrument.** The check
+  stopped at a `method_exists()` that is false in production, so it let every user
+  through, read-only ones included; behind it, it read form rights from a key the
+  framework does not return, with fallback values that were the wrong way round. It
+  now reads the right REDCap enforces on the request, or else the project's
+  `data_entry` rights, and understands both encodings: legacy `0`–`3` and REDCap
+  15's bitmask. Anything it cannot establish is a refusal.
+- **Free text can no longer run in the form.** The page's configuration was printed
+  in a `<script>` with `</script>` left intact, so a user with design rights could
+  run code as anyone opening the form, through the project title. It is now escaped
+  for a script block, and `pseudonym-domain` is restricted to a plain identifier.
+
+### Updating from 1.x
+
+Tested with a real update, from v1.2.0 and from v1.5.0: see "Updating from 1.x" in
+the README, which lists what stays different for data sent before.
+
+- **Needs PHP 8.1 or later with sodium**, declared in `config.json`. On an older
+  PHP, REDCap refuses this version and disables the module across the instance,
+  until the previous version is enabled again: check PHP before updating.
+- **A form opened before the update can no longer upload.** It would have sent
+  files deidentified the old way, past the fingerprint check; it now has to be
+  reloaded.
+- **Earlier uploads are not called a first upload.** With no fingerprint on a
+  record that already holds uploads, the review window says they cannot be
+  compared.
+- A file without a NIP is refused, where 1.x accepted it.
+
+### Changed — dates
+
+- **Every date moves back by the patient's offset, 50 to 100 years**, derived
+  from the pseudonym and applied in the browser: intervals between a patient's
+  examinations are exact across uploads and formats, and the calendar — era,
+  season, weekday — is gone. Dates no longer depend on the birth date: a file
+  without one keeps its dates, shifted, where 1.5.1 removed them.
+- **The birth date is blanked**, no longer pinned to 1970-01-01: the age at a
+  procedure, exact to the day, all but identified the patient. DICOM files get
+  `PatientAge` instead, in years (months under two, weeks under two months),
+  and `LongitudinalTemporalInformationModified` = `MODIFIED`.
+- `DeidentificationMethod` names the release: `IHU LIRYC REDCAP PLUGIN v2.0.0`.
+  Files deidentified before sit on another calendar; this tells them apart.
+
+### Changed — identifiers (CNIL MR-CNS-03/04)
+
+- **DICOM UIDs are rewritten under a key**, HMAC-SHA256 with a key derived from
+  the patient's pseudonym and the record id. The anonymizer's unkeyed hash let
+  anyone with the original UID compute the new one, and so link a file back to
+  the PACS. Series stay grouped, references stay valid, and one study in two
+  records cannot be linked through its UIDs.
+- **`AccessionNumber` and imaging order numbers are emptied**, no longer hashed.
+
+### Changed — defaults (CNIL MR-SEC-05/06)
+
+- **XML ECG and Schiller Holter deidentification are on by default**, so a new
+  project no longer uploads them identified. An existing project keeps what it
+  has stored, and uploads them identified until someone ticks the boxes.
+- **Files are stored under neutral names by default**: folder and file names can
+  carry the patient's identity. `preserve-upload-folder-architecture` keeps the
+  previous behaviour.
+
+### Fixed — Schiller Holter
+
+- **Recordings whose header has `0x01` in byte 5 are accepted.** That byte varies
+  between recordings with the same layout; such a Holter was dropped from the
+  upload as an unsupported format.
+- **A Holter is deidentified in place**, without copying it: a 340 MB recording
+  no longer needs several times that in WASM memory.
+
+### Settings
+
+- Project: `pseudonym-fingerprint-check`, `pseudonym-domain` (filled in as
+  `redcap:<project id>`).
+- System: `pseudonym-redcap-key` (generated when empty), `pseudonym-daily-limit`.
+- **Never change the key or the domain once files have been uploaded**, and back
+  the key up.
+
 ## 1.5.1
 
 ### Fixed — deidentification

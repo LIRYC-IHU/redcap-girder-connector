@@ -10,12 +10,33 @@
             "institution": "IHU Liryc - University of Bordeaux"
         }
     ],
+    "compatibility": {
+        "php-version-min": "8.1.0"
+    },
     "auth-ajax-actions": [
         "init-batch",
         "init-file-upload",
         "upload-file",
         "refresh-upload-metadata",
-        "delete-upload-contents"
+        "delete-upload-contents",
+        "pseudonym-evaluate",
+        "pseudonym-check",
+        "pseudonym-register"
+    ],
+    "system-settings": [
+        {
+            "key": "pseudonym-redcap-key",
+            "name": "<b>REDCap pseudonym key</b> - the secret behind patient signatures, date offsets and UIDs, 64 hex characters; generated when empty. <b>Never change it once files have been uploaded</b>, and back it up like an encryption key",
+            "type": "text",
+            "required": false
+        },
+        {
+            "key": "pseudonym-daily-limit",
+            "name": "<b>Pseudonym evaluations per 24 hours, per project</b> - default 500",
+            "type": "text",
+            "default": "500",
+            "required": false
+        }
     ],
     "project-settings": [
         {
@@ -74,19 +95,33 @@
             "key": "deidentify-xml-ecg",
             "name": "<b>Enable XML ECG Deidentification</b> - deidentify supported ECG XML files before upload",
             "type": "checkbox",
+            "default": "1",
             "required": false
         },
         {
             "key": "deidentify-schiller-holter",
             "name": "<b>Enable Schiller Holter Deidentification</b> - deidentify supported Schiller Holter files before upload",
             "type": "checkbox",
+            "default": "1",
+            "required": false
+        },
+        {
+            "key": "pseudonym-fingerprint-check",
+            "name": "<b>Check the patient's signature</b> - warn before an upload whose files do not match the record's earlier uploads: the uploader can still confirm it, which is logged (compared by a two-character keyed signature of the NIP, never the NIP itself)",
+            "type": "checkbox",
+            "default": "1",
+            "required": false
+        },
+        {
+            "key": "pseudonym-domain",
+            "name": "<b>Pseudonym domain</b> - separates this project's pseudonyms from every other project's; filled in as <code>redcap:&lt;project id&gt;</code> when empty. <b>Do not change it once files have been uploaded</b>",
+            "type": "text",
             "required": false
         },
         {
             "key": "preserve-upload-folder-architecture",
-            "name": "<b>Preserve Upload Folder Architecture</b> - when disabled, files are stored at field root with neutral names (0001.ext to 9999.ext)",
+            "name": "<b>Preserve Upload Folder Architecture</b> - off by default: files are stored at field root with neutral names (0001.ext to 9999.ext), since folder and file names can carry the patient's identity",
             "type": "checkbox",
-            "default": "1",
             "required": false
         }
     ],
@@ -94,7 +129,9 @@
         {
             "tag": "@GIRDER_UPLOAD",
             "description": "Transform this field into a Drag & Drop area for Girder.",
-            "allowed_field_types": ["textarea"]
+            "allowed_field_types": [
+                "textarea"
+            ]
         }
     ],
     "links": {
