@@ -10,6 +10,41 @@ fn deidentify(source: &str, record_id: &str) -> String {
 }
 
 #[test]
+fn neither_doctype_nor_processing_instructions_reach_the_output() {
+    let source = hl7_v3_fixture().replacen(
+        "<AnnotatedECG",
+        "<!DOCTYPE AnnotatedECG [<!ENTITY who \"ZZDOCTYPE\">]>\
+         <?xml-stylesheet href=\"ZZSTYLE.xsl\"?><AnnotatedECG",
+        1,
+    );
+    assert!(source.contains("ZZDOCTYPE"), "the fixture changed");
+
+    let output = deidentify(&source, "REC-42");
+
+    assert!(!output.contains("ZZDOCTYPE"));
+    assert!(!output.contains("ZZSTYLE"));
+    assert!(!output.contains("<!DOCTYPE"));
+}
+
+#[test]
+fn a_date_range_does_not_survive_on_a_kept_path() {
+    let source = hl7_v3_fixture().replacen(
+        r#"<effectiveTime value="20240115093000"/>"#,
+        r#"<effectiveTime value="20240115-20240201"/>"#,
+        1,
+    );
+    assert!(source.contains("20240201"), "the fixture changed");
+
+    let output = deidentify(&source, "REC-42");
+
+    assert!(!output.contains("20240201"), "the end of the range leaked");
+    assert!(
+        !output.contains("20240115-"),
+        "the start of the range leaked"
+    );
+}
+
+#[test]
 fn recognizes_an_hl7_annotated_ecg() {
     assert_eq!(
         xml::classify(hl7_v3_fixture().as_bytes(), "ecg.xml"),

@@ -1,5 +1,51 @@
 # Changelog
 
+## 2.0.1
+
+**Install this version rather than 2.0.0, which never went into service.** Pseudonyms
+differ between the two, see "Security" below.
+
+### Security
+
+- **Each project has its own pseudonym key**, derived from the module's and from the
+  project's domain, which the server reads from its settings. The browser's input is
+  blinded, so the domain it claimed could not be checked: a user of any project who
+  knew a NIP could compute its offset and signature for another project.
+  `pseudonym-domain` can now only be set by an administrator. **Signatures, date
+  offsets and UIDs all differ from 2.0.0.**
+- **Free text without a rule is emptied in DICOM files.** The anonymizer keeps some
+  two hundred person-name and text elements it has no rule for, `ReasonForVisit`,
+  `PersonTelecomInformation`, `ContentCreatorName` and `TextValue` among them, in
+  sequences too. Every public PN, LT, ST, UT and UC element it would keep is now
+  emptied. LO and SH stay: they hold `SeriesDescription` and what the data needs.
+- **The DICOM file meta group no longer tells who sent the file.** Application entity
+  titles and private information were copied as they were.
+- **A date range no longer leaves a real date behind.** In `20190101-20190201`, the end
+  was written back unshifted. Only a time of day may follow a date now: anything else
+  is removed, in DICOM and in XML ECGs.
+- **XML ECGs lose their `DOCTYPE` and processing instructions**, which were copied
+  verbatim, and could carry text or declare entities for whoever parses the file next.
+- **Rejected files keep their path out of the REDCap field**, where it could carry the
+  patient's name. The review window names them before the upload, and the field stores
+  `File 1 (.dcm)`, unless the project keeps its folder and file names anyway. The
+  refusal of an XML dialect no longer names the file either.
+
+### Changed
+
+- **Derived DICOM images are left out of the upload**: `DERIVED` in `ImageType`, as in
+  dicom-rust-wasm-deid. They are out of scope rather than wrong, so they are counted
+  in the review window and not listed as rejections. With DICOM deidentification off,
+  they are sent as they are.
+
+### Fixed
+
+- **An upload no longer fails with `Unexpected token '<'` on a project whose
+  record-list cache is not built.** That is a new project, or one whose cache REDCap's
+  cron dropped after a few idle weeks. REDCap then redirects the first request into
+  the project to its cache builder, and the widget got an HTML page instead of JSON.
+  The widget now recognizes a response that is not JSON, builds the cache itself, and
+  sends the request once more.
+
 ## 2.0.0
 
 Design and threat model:

@@ -204,6 +204,20 @@ test('metadata written by 1.x is rewritten without loss or a false alert', () =>
     assert.equal(stored.girder.parentFolderId, 'abc123');
 });
 
+test('a rejected file keeps its path out of the REDCap field', () => {
+    const rejected = [
+        { name: 'DOE John/scan.dcm', stage: 'deidentification', reason: 'no NIP' },
+        { name: 'README', stage: 'deidentification', reason: 'not supported' }
+    ];
+
+    assert.deepEqual(core.storedRejections(rejected, false), [
+        { name: 'File 1 (.dcm)', stage: 'deidentification', reason: 'no NIP' },
+        { name: 'File 2', stage: 'deidentification', reason: 'not supported' }
+    ]);
+    assert.equal(rejected[0].name, 'DOE John/scan.dcm', 'the browser keeps it');
+    assert.deepEqual(core.storedRejections(rejected, true), rejected, 'a project keeping its names keeps these too');
+});
+
 test('a confirmed mismatch stays on the field', () => {
     const alert = { type: 'fingerprint-mismatch', confirmedAt: '2026-11-04T10:00:00.000Z' };
     const stored = core.buildStoredMetadataPayload({

@@ -40,6 +40,20 @@ The server **must reject** a blinded element that is not 32 bytes, does not deco
 valid ristretto255 point, has bit 255 set, or is the identity (32 zero bytes) — checked
 explicitly rather than left to the library.
 
+## Project key
+
+REDCap never evaluates with its module key `k`. Each project has its own, derived from
+`k` and from the domain REDCap reads in the project's settings:
+
+```
+k_project = reduce(HMAC-SHA512(k, "liryc-pseudonym-project-key-v1" ‖ 0x00 ‖ domain))
+```
+
+`reduce` is `crypto_core_ristretto255_scalar_reduce`, the 64 bytes read as a
+little-endian integer modulo the group order. The domain in the browser's input `x` is
+only a label: blinded, it cannot be checked, so the separation between projects rests
+on this key. Below, `k` is `k_project` and `K` its public key.
+
 ## Evaluation
 
 ```

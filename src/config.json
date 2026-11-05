@@ -114,8 +114,9 @@
         },
         {
             "key": "pseudonym-domain",
-            "name": "<b>Pseudonym domain</b> - separates this project's pseudonyms from every other project's; filled in as <code>redcap:&lt;project id&gt;</code> when empty. <b>Do not change it once files have been uploaded</b>",
+            "name": "<b>Pseudonym domain</b> - gives this project its own pseudonym key; filled in as <code>redcap:&lt;project id&gt;</code> when empty. <b>Do not change it once files have been uploaded</b>",
             "type": "text",
+            "super-users-only": true,
             "required": false
         },
         {

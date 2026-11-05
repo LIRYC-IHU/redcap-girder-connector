@@ -38,6 +38,16 @@ pub struct ParsedDate<'a> {
 /// `None` when the text does not start with a valid calendar date in a
 /// plausible year, which is what keeps plain numbers from being shifted.
 pub fn parse(value: &str) -> Option<ParsedDate<'_>> {
+    parse_head(value).filter(|parsed| is_time_of_day(parsed.remainder))
+}
+
+/// Whether a value opens with a calendar date, whatever follows it. Such a value
+/// holds a real date even when [`parse`] refuses it, as a range does.
+pub fn begins_with_date(value: &str) -> bool {
+    parse_head(value).is_some()
+}
+
+fn parse_head(value: &str) -> Option<ParsedDate<'_>> {
     let bytes = value.as_bytes();
 
     let (year, month, day, rest, format) =
@@ -79,6 +89,30 @@ pub fn parse(value: &str) -> Option<ParsedDate<'_>> {
         format,
         remainder: rest,
     })
+}
+
+/// Whether what follows a date is a time of day and a time zone, in any of the
+/// notations met: DICOM and HL7 (`143512.000+0100`) or ISO (`T14:35:12Z`).
+///
+/// Anything else is refused, since it would be written back as it is: the second
+/// half of a range (`20190101-20190201`) is a real date.
+fn is_time_of_day(rest: &str) -> bool {
+    let rest = rest.trim_end();
+    let rest = rest.strip_prefix(['T', ' ']).unwrap_or(rest);
+    let (time, zone) = rest.split_at(rest.find(['+', '-', 'Z']).unwrap_or(rest.len()));
+
+    let (clock, fraction) = time.split_once('.').unwrap_or((time, ""));
+    let clock_digits = clock.chars().filter(|c| *c != ':').count();
+    let time_is_valid = clock_digits <= 6
+        && clock.chars().all(|c| c.is_ascii_digit() || c == ':')
+        && fraction.chars().all(|c| c.is_ascii_digit());
+
+    let offset: String = zone.chars().skip(1).filter(|c| *c != ':').collect();
+    let zone_is_valid = zone.is_empty()
+        || zone == "Z"
+        || (offset.len() == 4 && offset.chars().all(|c| c.is_ascii_digit()));
+
+    time_is_valid && zone_is_valid
 }
 
 /// Rewrite a date, keeping its original notation and anything that trailed it.

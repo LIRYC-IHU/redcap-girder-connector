@@ -198,7 +198,7 @@ test('the review lists each DICOM series with its modality, then ECGs and Holter
         { type: 'ECG', detail: '', files: 1 },
         { type: 'Holter', detail: '', files: 1 }
     ]);
-    assert.deepEqual(review.notes, ['1 file set aside, listed after the upload.']);
+    assert.deepEqual(review.notes, ['1 file set aside.']);
 });
 
 test('the review says what the signature check found', () => {
@@ -240,6 +240,23 @@ test('files sent as they are have no patient and no check to show', () => {
     assert.equal(review.patient, null);
     assert.equal(review.check, null);
     assert.deepEqual(review.notes, ['1 file sent without deidentification (disabled for their format).']);
+});
+
+test('the review names the files set aside, up to a limit', () => {
+    const setAside = Array.from({ length: 12 }, (_, index) => ({ name: `DOE_${index}.dcm`, reason: 'no NIP' }));
+    const review = core.buildTransferReview({
+        recordId: 'REC-42',
+        patient: null,
+        summary: core.summarizeTransfer([]),
+        passthroughCount: 0,
+        setAsideCount: 12,
+        setAside,
+        checkStatus: ''
+    });
+
+    assert.equal(review.setAside.length, 10);
+    assert.equal(review.setAside[0], 'DOE_0.dcm: no NIP');
+    assert.equal(review.setAsideOmitted, 2);
 });
 
 test('a batch of several patients is refused as a whole', () => {

@@ -29,6 +29,8 @@ final class Voprf
 
     private const BYTES = 32;
 
+    private const PROJECT_KEY_LABEL = 'liryc-pseudonym-project-key-v1';
+
     /** Encoding of the identity element, and of the zero scalar. */
     private const ZERO = "\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0";
 
@@ -53,6 +55,23 @@ final class Voprf
         } while (!self::isCanonicalNonZeroScalar($key));
 
         return bin2hex($key);
+    }
+
+    /**
+     * The key one project evaluates with, derived from the module's: the
+     * browser's input is blinded, so only a key of its own can keep a project from
+     * computing another's pseudonyms.
+     */
+    public static function deriveProjectKey(string $key, string $domain): string
+    {
+        $bytes = self::key($key);
+        $wide = hash_hmac('sha512', self::PROJECT_KEY_LABEL . "\0" . $domain, $bytes, true);
+        $scalar = sodium_crypto_core_ristretto255_scalar_reduce($wide);
+        if (!self::isCanonicalNonZeroScalar($scalar)) {
+            throw new \InvalidArgumentException('The project key cannot be derived.');
+        }
+
+        return bin2hex($scalar);
     }
 
     /** 32 bytes of hex encoding a canonical, non-zero scalar. */

@@ -62,10 +62,25 @@
         return moduleObject;
     }
 
+    // Builds the project's record-list cache, so that REDCap stops redirecting
+    // requests into the project (see core.retryAfterCacheRebuild).
+    async function rebuildRecordListCache() {
+        var config = window.GirderUploaderConfig || {};
+        var url = String(config.recordListCacheUrl || '');
+        if (!url) {
+            return;
+        }
+        debug('Non-JSON AJAX response: building the record-list cache and retrying');
+        var response = await fetch(url, { credentials: 'same-origin' });
+        await response.text();
+    }
+
     async function moduleAjax(action, payload) {
         var moduleObject = getModuleObject();
         debug('AJAX request -> ' + action, payload);
-        var response = await moduleObject.ajax(action, payload);
+        var response = await core.retryAfterCacheRebuild(function () {
+            return moduleObject.ajax(action, payload);
+        }, rebuildRecordListCache);
 
         if (!response || response.ok !== true) {
             var message = response && response.error ? response.error : 'Unknown server error';
@@ -374,6 +389,17 @@
         review.notes.forEach(function (note) {
             root.appendChild(textElement('p', 'girder-review-note', note));
         });
+        if (review.setAside.length) {
+            var setAside = document.createElement('ul');
+            setAside.className = 'girder-review-set-aside';
+            review.setAside.forEach(function (line) {
+                setAside.appendChild(textElement('li', '', line));
+            });
+            if (review.setAsideOmitted) {
+                setAside.appendChild(textElement('li', '', 'and ' + review.setAsideOmitted + ' more'));
+            }
+            root.appendChild(setAside);
+        }
         return root;
     }
 
@@ -508,6 +534,7 @@
             summary: core.summarizeTransfer(eligible),
             passthroughCount: groups.passthrough.length,
             setAsideCount: rejected.length + skipped,
+            setAside: rejected,
             checkStatus: checkStatus,
             existingUploads: existingUploads
         }));
@@ -1352,7 +1379,7 @@
                     totalSizeBytes: pendingPayload.uploadedFiles.reduce(function (sum, fileInfo) {
                         return sum + Number(fileInfo && fileInfo.size ? fileInfo.size : 0);
                     }, 0),
-                    rejectedFiles: rejected.slice(),
+                    rejectedFiles: core.storedRejections(rejected, !!config.settings.preserveUploadFolderArchitecture),
                     rejectedCount: rejected.length,
                     patientAlert: prepared.patientAlert,
                     uploadState: {

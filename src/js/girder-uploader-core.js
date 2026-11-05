@@ -26,6 +26,9 @@
     /** How many files are described individually in the stored metadata. */
     var STORED_FILE_SAMPLE_LIMIT = 10;
 
+    /** How many set-aside files the review window names. */
+    var REVIEW_SET_ASIDE_LIMIT = 10;
+
     /**
      * A file the batch could not take, with the reason.
      *
@@ -40,6 +43,23 @@
             stage: String(stage || 'deidentification'),
             reason: String((reason && reason.message) || reason || 'Unknown error')
         };
+    }
+
+    /**
+     * Rejections as stored in the REDCap field. Their name is the path on the
+     * uploader's disk, which can carry the patient's identity, so it stays out
+     * unless the project keeps those names in Girder anyway.
+     */
+    function storedRejections(rejected, keepNames) {
+        return (rejected || []).map(function (entry, index) {
+            if (keepNames) {
+                return entry;
+            }
+            var extension = /\.[A-Za-z0-9]{1,8}$/.exec(String(entry.name || ''));
+            return Object.assign({}, entry, {
+                name: 'File ' + (index + 1) + (extension ? ' (' + extension[0] + ')' : '')
+            });
+        });
     }
 
     function copyRejection(entry) {
@@ -377,8 +397,9 @@
                 + ' sent without deidentification (disabled for their format).');
         }
         if (options.setAsideCount) {
-            notes.push(plural(options.setAsideCount, 'file') + ' set aside, listed after the upload.');
+            notes.push(plural(options.setAsideCount, 'file') + ' set aside.');
         }
+        var setAside = options.setAside || [];
 
         return {
             recordId: String(options.recordId || ''),
@@ -390,6 +411,11 @@
             ] : null,
             content: content,
             notes: notes,
+            // Their real names, in this window only: see storedRejections.
+            setAside: setAside.slice(0, REVIEW_SET_ASIDE_LIMIT).map(function (entry) {
+                return entry.name + ': ' + entry.reason;
+            }),
+            setAsideOmitted: Math.max(0, setAside.length - REVIEW_SET_ASIDE_LIMIT),
             check: check,
             mismatch: options.checkStatus === 'mismatch',
             confirmLabel: options.checkStatus === 'mismatch' ? 'Upload anyway' : 'Upload'
@@ -436,6 +462,44 @@
     function isSkipError(error) {
         var message = error && error.message ? String(error.message) : String(error || '');
         return message.trim().indexOf('SKIP:') === 0;
+    }
+
+    /**
+     * While a project's record-list cache is not built (a new project, or one
+     * whose cache REDCap's cron dropped after inactivity), REDCap redirects the
+     * first request into the project to its cache builder. When that request is
+     * a module AJAX POST, the browser follows the redirect and the EM framework
+     * fails to parse the HTML page it lands on: JSON.parse throws a SyntaxError
+     * ("Unexpected token '<'" in Chrome, "JSON.parse: unexpected character" in
+     * Firefox, "JSON Parse error" in Safari). Errors reported by the module or
+     * the framework itself are plain strings or Errors, not SyntaxErrors.
+     */
+    function isNonJsonResponseError(error) {
+        if (!error || typeof error !== 'object') {
+            return false;
+        }
+        if (error.name === 'SyntaxError') {
+            return true;
+        }
+        return /is not valid JSON|JSON\.parse|JSON Parse error/i.test(String(error.message || ''));
+    }
+
+    /**
+     * Run `request`; if its response was not JSON, run `rebuildCache` and send
+     * the request once more. A redirected request never reached the module, so
+     * sending it again is safe. A failing rebuild is ignored: the second attempt
+     * reports whatever is still wrong.
+     */
+    function retryAfterCacheRebuild(request, rebuildCache) {
+        return Promise.resolve().then(request).catch(function (error) {
+            if (!isNonJsonResponseError(error)) {
+                throw error;
+            }
+            return Promise.resolve()
+                .then(rebuildCache)
+                .catch(function () {})
+                .then(request);
+        });
     }
 
     function formatSize(bytes) {
@@ -639,6 +703,7 @@
         isLikelyDicomFile: isLikelyDicomFile,
         normalizeUploadFiles: normalizeUploadFiles,
         rejection: rejection,
+        storedRejections: storedRejections,
         summarizeOutcome: summarizeOutcome,
         buildRejectedSample: buildRejectedSample,
         carryRejectionsForward: carryRejectionsForward,
@@ -653,6 +718,8 @@
         buildMultiplePatientsError: buildMultiplePatientsError,
         MISSING_NIP_REASON: MISSING_NIP_REASON,
         isSkipError: isSkipError,
+        isNonJsonResponseError: isNonJsonResponseError,
+        retryAfterCacheRebuild: retryAfterCacheRebuild,
         formatSize: formatSize,
         buildFolderUrl: buildFolderUrl,
         copyFileSummary: copyFileSummary,
