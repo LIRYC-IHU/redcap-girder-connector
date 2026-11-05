@@ -242,7 +242,17 @@ pub const SECONDARY_CAPTURE_REASON: &str =
 /// like a DICOMDIR, it is out of scope rather than wrong, and an examination can
 /// hold hundreds of them.
 pub const DERIVED_IMAGE_SKIP_REASON: &str =
-    "SKIP: derived images (reformats, reconstructions) are not uploaded";
+    "SKIP: derived secondary images (reformats, reconstructions) are not uploaded";
+
+/// A reformat or reconstruction: `DERIVED\SECONDARY` in `ImageType`.
+///
+/// `DERIVED` alone says nothing of the kind: its pixels were processed, which is
+/// the rule for fluoroscopy, whose acquisitions read `DERIVED\PRIMARY\SINGLE PLANE`.
+/// `PRIMARY` says the image comes straight from the examination.
+fn is_derived_secondary(image_type: &str) -> bool {
+    let mut values = image_type.split('\\').map(str::trim);
+    values.next() == Some("DERIVED") && values.next() == Some("SECONDARY")
+}
 
 /// Secondary Capture Image Storage. The four multi-frame classes extend it by
 /// one component, and the dot matters: `1.2.840.10008.5.1.4.1.1.77.1.1` is
@@ -270,7 +280,8 @@ fn refusal(object: &DefaultDicomObject) -> Option<&'static str> {
         Some(SECONDARY_CAPTURE_REASON)
     } else if wraps_document(object) {
         Some(ENCAPSULATED_DOCUMENT_REASON)
-    } else if read_string(object, tags::IMAGE_TYPE).is_some_and(|kind| kind.contains("DERIVED")) {
+    } else if read_string(object, tags::IMAGE_TYPE).is_some_and(|kind| is_derived_secondary(&kind))
+    {
         Some(DERIVED_IMAGE_SKIP_REASON)
     } else {
         None

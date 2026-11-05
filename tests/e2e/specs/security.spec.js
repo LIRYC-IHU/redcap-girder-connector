@@ -104,7 +104,7 @@ test.describe('security', () => {
         const recordId = `sx${RUN}f`;
         redcap.trackDialogs(page);
         await redcap.openRecordForm(page, recordId);
-        await redcap.uploadFiles(page, ['report_20240115.dcm', 'capture_20240115.dcm', 'derived_20240115.dcm', 'p1000001_20240115.dcm'].map(fixturePath));
+        await redcap.uploadFiles(page, ['report_20240115.dcm', 'capture_20240115.dcm', 'derived_20240115.dcm', 'fluoro_20240115.dcm', 'p1000001_20240115.dcm'].map(fixturePath));
         await expect(redcap.review(page)).toContainText('3 files set aside', { timeout: 60_000 });
         await redcap.answerReview(page);
         const metadata = await redcap.waitForUploadOutcome(recordId);
@@ -116,8 +116,10 @@ test.describe('security', () => {
         expect(reasons).toMatch(/Secondary Capture/);
         expect(metadata.rejectedFiles, 'a derived image is left out, not an error').toHaveLength(2);
         const files = await girder.listRecordFiles(recordId);
-        expect(files).toHaveLength(1);
-        expect((await girder.downloadFile(files[0].file._id)).toString('latin1')).not.toContain('%PDF');
+        expect(files, 'the image and the fluoroscopy').toHaveLength(2);
+        for (const entry of files) {
+            expect((await girder.downloadFile(entry.file._id)).toString('latin1')).not.toContain('%PDF');
+        }
     });
 
     test('a rejected file keeps its name out of the field, unless the project keeps names', async ({ page }) => {

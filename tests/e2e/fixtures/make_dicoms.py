@@ -35,6 +35,8 @@ PATIENTS = [
     ("capture", "1000001", "ZZTEST^ALICE", "19540212", "F"),
     # A reconstruction, left out of the batch.
     ("derived", "1000001", "ZZTEST^ALICE", "19540212", "F"),
+    # Fluoroscopy: processed pixels, but an acquisition, which goes through.
+    ("fluoro", "1000001", "ZZTEST^ALICE", "19540212", "F"),
 ]
 
 STUDIES = [
@@ -69,7 +71,10 @@ def make(patient, study):
     ds.Modality = "XA"
     if pkey == "html":
         ds.SeriesDescription = "<img src=x onerror=window.__xss=2>"
-    ds.ImageType = ["DERIVED", "SECONDARY", "MPR"] if pkey == "derived" else ["ORIGINAL", "PRIMARY", "SINGLE PLANE"]
+    ds.ImageType = {
+        "derived": ["DERIVED", "SECONDARY", "MPR"],
+        "fluoro": ["DERIVED", "PRIMARY", "SINGLE PLANE"],
+    }.get(pkey, ["ORIGINAL", "PRIMARY", "SINGLE PLANE"])
     if pkey == "report":
         ds.MIMETypeOfEncapsulatedDocument = "application/pdf"
         ds.EncapsulatedDocument = b"%PDF-1.4 ZZTEST "

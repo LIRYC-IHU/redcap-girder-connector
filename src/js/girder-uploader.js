@@ -242,7 +242,7 @@
             throw new Error('Deidentification worker URL is missing.');
         }
 
-        deidentifyBridge = createDeidentifyBridge(workerUrl);
+        deidentifyBridge = createDeidentifyBridge(core.sameOriginUrl(workerUrl, window.location.href));
         return deidentifyBridge;
     }
 

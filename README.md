@@ -15,7 +15,7 @@ Supported formats:
 | DICOM | `DICM` magic code, or a bare data set / file meta group without one | Patient identity, institution, private tags, person names and free text, the sender in the file meta group; UIDs rehashed; dates shifted |
 | DICOM wrapping a document (PDF, CDA…) | `EncapsulatedDocument` element, sequences included | Not uploaded at all: the identity sits inside the document, out of reach. Set aside with its reason |
 | DICOM Secondary Capture | SOP class `1.2.840.10008.5.1.4.1.1.7` and its multi-frame `.7.1` to `.7.4` | Not uploaded at all: an image of a screen or a document can show anything. Set aside with its reason |
-| Derived DICOM image (reformat, reconstruction) | `DERIVED` in `ImageType` | Not uploaded at all. Left out of the batch like a DICOMDIR, and counted in the review window |
+| Derived DICOM image (reformat, reconstruction) | `ImageType` starting with `DERIVED\SECONDARY` | Not uploaded at all. Left out of the batch like a DICOMDIR, and counted in the review window. `DERIVED\PRIMARY`, the rule for fluoroscopy, is an acquisition and goes through |
 | DICOMDIR | Media Storage Directory SOP class | Not uploaded at all — see below |
 | XML ECG (HL7 aECG only) | root element + namespace | Everything outside an allowlist; UIDs replaced, dates shifted |
 | Schiller Holter | file magic number (byte 5 may be `0x00` or `0x01`) | Patient block, voice annotations, device UUID |
@@ -75,7 +75,7 @@ To deploy a working copy into a local REDCap, symlink `src/` into
 `redcap/modules/` under a versioned name:
 
 ```bash
-ln -s "$PWD/src" /path/to/redcap/modules/girder_uploader_v2.0.1
+ln -s "$PWD/src" /path/to/redcap/modules/girder_uploader_v2.0.2
 ```
 
 ## Tests
@@ -309,7 +309,7 @@ module writes:
 - `PatientAge` ← the age at the study, computed on the real dates: years
   (`069Y`), months under two years (`018M`), weeks under two months (`006W`)
 - `DeidentificationMethod` ← `IHU LIRYC REDCAP PLUGIN v{release}`, e.g.
-  `IHU LIRYC REDCAP PLUGIN v2.0.1`, so a file says which rules it went through;
+  `IHU LIRYC REDCAP PLUGIN v2.0.2`, so a file says which rules it went through;
   `PatientIdentityRemoved` ← `YES`
 - `LongitudinalTemporalInformationModified` ← `MODIFIED`
 

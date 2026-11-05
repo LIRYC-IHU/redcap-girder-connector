@@ -237,8 +237,10 @@ autre. Conserver ce réglage permet de migrer un projet sans changer ses pseudon
   l'anonymiseur sont vidés, séquences comprises. LO et SH sont conservés, car ils portent
   `SeriesDescription` et ce dont les données ont besoin : une saisie libre dans ces champs
   passe donc, et leur contenu reste à contrôler en amont.
-- **Images dérivées** : un fichier dont `ImageType` contient `DERIVED` est retiré du lot, et
-  compté dans la fenêtre de revue. Il n'est pas traité comme une erreur.
+- **Images dérivées** : un fichier dont `ImageType` commence par `DERIVED\SECONDARY` est
+  retiré du lot, et compté dans la fenêtre de revue. Il n'est pas traité comme une erreur.
+  `DERIVED\PRIMARY` reste envoyé : c'est le marquage courant des acquisitions de radioscopie,
+  dont les pixels sont traités mais qui proviennent directement de l'examen.
 - **Secondary Capture** : les cinq classes sont refusées de la même façon. Une capture
   d'écran ou de document peut montrer l'identité dans ses pixels, que le module ne lit pas.
   Le refus ne porte que sur ces classes : le contrôle du texte incrusté dans les autres
