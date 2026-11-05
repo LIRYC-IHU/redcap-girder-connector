@@ -261,17 +261,23 @@ fn a_derived_image_is_left_out() {
 }
 
 #[test]
-fn an_original_image_goes_through() {
-    let input = dicom_fixture_edited(|object| {
-        put(
-            object,
-            tags::IMAGE_TYPE,
-            VR::CS,
-            "ORIGINAL\\PRIMARY\\SINGLE PLANE",
-        );
-    });
+fn an_acquisition_goes_through_whether_processed_or_not() {
+    // Fluoroscopy reads DERIVED\PRIMARY: processed pixels, but the examination itself.
+    for image_type in [
+        "ORIGINAL\\PRIMARY\\SINGLE PLANE",
+        "DERIVED\\PRIMARY\\SINGLE PLANE",
+        "ORIGINAL\\SECONDARY",
+        "DERIVED",
+    ] {
+        let input = dicom_fixture_edited(|object| {
+            put(object, tags::IMAGE_TYPE, VR::CS, image_type);
+        });
 
-    assert!(deidentify(&input, "REC-42", "MY PROJECT^REC-42").is_ok());
+        assert!(
+            deidentify(&input, "REC-42", "MY PROJECT^REC-42").is_ok(),
+            "{image_type}"
+        );
+    }
 }
 
 #[test]

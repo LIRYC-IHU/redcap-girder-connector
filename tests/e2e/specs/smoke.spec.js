@@ -10,6 +10,23 @@ const { fixturePath, fixtureManifest, loadState } = require('../helpers/state');
 const MIN_SHIFT_DAYS = 18262;
 const MAX_SHIFT_DAYS = 18262 + 18262;
 
+test('an upload works from another name than the configured base URL', async ({ page }) => {
+    const { version, projectId, instrument, eventId } = loadState().redcap;
+    const recordId = `origin${Date.now().toString(36)}`;
+    await redcap.ensureRecord(recordId);
+    redcap.trackDialogs(page);
+
+    await page.goto(`http://127.0.0.1:18081/redcap_v${version}/DataEntry/index.php?pid=${projectId}&id=${recordId}&page=${instrument}&event_id=${eventId}`);
+    await redcap.uploadFiles(page, [fixturePath('p1000001_20240115.dcm')]);
+    await expect(redcap.review(page)).toBeVisible({ timeout: 60_000 });
+    await redcap.answerReview(page);
+
+    const metadata = await redcap.waitForUploadOutcome(recordId);
+    expect(metadata.uploadState, JSON.stringify(metadata.uploadState)).toMatchObject({ status: 'completed' });
+    expect(await girder.listRecordFiles(recordId)).toHaveLength(1);
+    await redcap.deleteRecordsWithPrefix(recordId);
+});
+
 test.describe('upload flow', () => {
     let consoleLines = [];
 

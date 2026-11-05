@@ -106,6 +106,8 @@ service `fixtures`, profile `tools`) and writes to `fixtures/out/` (gitignored):
 | `html_{…}.dcm` | `1000003` | active HTML, also in SeriesDescription | 19900101 |
 | `report_{…}.dcm` | `1000001` | `ZZTEST^ALICE`, wrapping a PDF | 19540212 |
 | `capture_{…}.dcm` | `1000001` | `ZZTEST^ALICE`, a Secondary Capture | 19540212 |
+| `derived_{…}.dcm` | `1000001` | `ZZTEST^ALICE`, `DERIVED\SECONDARY\MPR` | 19540212 |
+| `fluoro_{…}.dcm` | `1000001` | `ZZTEST^ALICE`, `DERIVED\PRIMARY\SINGLE PLANE` | 19540212 |
 
 Each is an 8x8 MONOCHROME2 X-ray angiography image, explicit VR little endian, with deterministic
 UIDs. StudyDate/SeriesDate/ContentDate are 20240115 or 20240215. Institution, referring

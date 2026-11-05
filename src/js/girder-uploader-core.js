@@ -431,6 +431,17 @@
             + ' different patients. Upload one patient at a time. Nothing was uploaded.';
     }
 
+    /**
+     * The worker's URL on the page's own origin. REDCap builds module URLs from
+     * its configured base URL, and a browser refuses a worker from any other
+     * origin, so a REDCap reached under another name, an alias or an IP address,
+     * could not start one. The same server answers on both.
+     */
+    function sameOriginUrl(url, pageUrl) {
+        var target = new URL(url, pageUrl);
+        return new URL(pageUrl).origin + target.pathname + target.search;
+    }
+
     /** Message sent to the deidentification worker for a single file. */
     function buildDeidentifyRequest(file, config, bytes, keys) {
         var settings = (config && config.settings) || {};
@@ -710,6 +721,7 @@
         carryPatientAlertForward: carryPatientAlertForward,
         buildPatientName: buildPatientName,
         buildDeidentifyRequest: buildDeidentifyRequest,
+        sameOriginUrl: sameOriginUrl,
         buildInspectRequest: buildInspectRequest,
         groupByPatient: groupByPatient,
         summarizeTransfer: summarizeTransfer,

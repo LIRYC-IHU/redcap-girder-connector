@@ -259,6 +259,21 @@ test('the review names the files set aside, up to a limit', () => {
     assert.equal(review.setAsideOmitted, 2);
 });
 
+test('the worker is asked of the origin the page was reached on', () => {
+    const worker = 'http://localhost:18081/modules/girder_uploader_v2.0.1/js/deidentify-worker.js?1793830408';
+
+    assert.equal(
+        core.sameOriginUrl(worker, 'http://127.0.0.1:18081/redcap_v15.9.3/DataEntry/index.php?pid=16'),
+        'http://127.0.0.1:18081/modules/girder_uploader_v2.0.1/js/deidentify-worker.js?1793830408'
+    );
+    assert.equal(core.sameOriginUrl(worker, 'http://localhost:18081/redcap_v15.9.3/DataEntry/index.php'), worker);
+    assert.equal(
+        core.sameOriginUrl('https://redcap.example.org/redcap/modules/m_v1/js/w.js', 'https://redcap.intranet/redcap/DataEntry/index.php'),
+        'https://redcap.intranet/redcap/modules/m_v1/js/w.js',
+        'a REDCap under a path keeps it'
+    );
+});
+
 test('a batch of several patients is refused as a whole', () => {
     const groups = core.groupByPatient([
         inspected('a.dcm', { nip: '1000001', familyName: 'DOE', givenName: 'JOHN' }),

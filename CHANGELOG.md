@@ -1,5 +1,21 @@
 # Changelog
 
+## 2.0.2
+
+**Install this version rather than 2.0.1, which left fluoroscopy out of uploads.**
+
+### Fixed
+
+- **Fluoroscopy acquisitions are uploaded again.** 2.0.1 left out every image with
+  `DERIVED` in `ImageType`, which also caught `DERIVED\PRIMARY\SINGLE PLANE`, how
+  fluoroscopy acquisitions are commonly marked: their pixels are processed, but they
+  come straight from the examination. Only `DERIVED\SECONDARY`, reformats and
+  reconstructions, is left out now.
+- **An upload no longer fails when REDCap is reached under another name than its
+  configured base URL**, an alias or an IP address. The worker's URL came from that
+  base URL, and a browser refuses a worker from another origin: `Failed to construct
+  'Worker'`. It is now requested from the origin of the page.
+
 ## 2.0.1
 
 **Install this version rather than 2.0.0, which never went into service.** Pseudonyms
