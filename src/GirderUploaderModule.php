@@ -17,15 +17,17 @@ class GirderUploaderModule extends AbstractExternalModule
     const PSEUDONYM_DOMAIN_SETTING = 'pseudonym-domain';
     /** Project checkbox: compare each upload's fingerprint with the record's. */
     const PSEUDONYM_CHECK_SETTING = 'pseudonym-fingerprint-check';
-    /** Internal project settings, one per record: the stored fingerprint. */
+    /** Internal project settings, one per record: its uploads' fingerprints, as JSON. */
     const PSEUDONYM_FINGERPRINT_PREFIX = 'pseudonym-fingerprint:';
+    /** Stands for an upload in a signature stored before they had one each. */
+    const PSEUDONYM_WHOLE_RECORD = '*';
     /** Log message counted by the rate limit. */
     const PSEUDONYM_EVALUATION_LOG = 'pseudonym-evaluate';
     /** Log message of an upload confirmed despite a fingerprint mismatch. */
     const PSEUDONYM_OVERRIDE_LOG = '[PSEUDONYM] fingerprint mismatch confirmed by the uploader';
+    /** Log message of an upload confirmed with files that carry no NIP. */
+    const PSEUDONYM_MISSING_NIP_LOG = '[PSEUDONYM] files without NIP confirmed by the uploader';
     const PSEUDONYM_TICKET_TTL_SECONDS = 3600;
-    const PSEUDONYM_TICKET_MATCH = 'match';
-    const PSEUDONYM_TICKET_OVERRIDE = 'override';
 
     public function redcap_module_system_enable($version)
     {
@@ -205,7 +207,7 @@ class GirderUploaderModule extends AbstractExternalModule
             if ($action === 'pseudonym-check') {
                 return $this->handlePseudonymCheck($payload, (int) $project_id, (string) $instrument, (string) $record, $group_id);
             }
-            return $this->handlePseudonymRegister($payload, (int) $project_id, (string) $instrument, (string) $record);
+            return $this->handlePseudonymRegister($payload, (int) $project_id, (string) $instrument, (string) $record, (int) $event_id, (int) $repeat_instance);
         }
 
         if ($action === 'upload-file') {
@@ -239,7 +241,7 @@ class GirderUploaderModule extends AbstractExternalModule
                     'error' => 'Deletion is disabled because this instrument is read-only for the current user.',
                 ];
             }
-            return $this->handleDeleteUploadContents($payload, (int) $project_id, (string) $instrument, (string) $record);
+            return $this->handleDeleteUploadContents($payload, (int) $project_id, (string) $instrument, (string) $record, (int) $event_id, (int) $repeat_instance);
         }
 
         $this->debugAjax('Unknown AJAX action', [
@@ -332,7 +334,7 @@ class GirderUploaderModule extends AbstractExternalModule
         }
         $ticket = isset($data['pseudonymTicket']) ? (string) $data['pseudonymTicket'] : '';
         if ($carriesDeidentifiedFiles && $this->isFingerprintCheckEnabled()
-            && !$this->verifyPseudonymTicket($projectId, $record, $ticket)) {
+            && !$this->verifyPseudonymTicket($projectId, $record, $this->uploadKey($eventId, $fieldName, $repeatInstance), $ticket)) {
             $this->debugAjax('init-batch rejected: no valid pseudonym ticket');
             return [
                 'ok' => false,
@@ -642,7 +644,7 @@ class GirderUploaderModule extends AbstractExternalModule
         }
     }
 
-    private function handleDeleteUploadContents($payload, $projectId, $instrument, $record = '')
+    private function handleDeleteUploadContents($payload, $projectId, $instrument, $record = '', $eventId = 0, $repeatInstance = 1)
     {
         $data = is_array($payload) ? $payload : [];
         $fieldName = isset($data['fieldName']) ? (string) $data['fieldName'] : '';
@@ -676,11 +678,14 @@ class GirderUploaderModule extends AbstractExternalModule
             if ($recordFolderId === false) {
                 return $this->uploadOutOfScope($record, $fieldName);
             }
+            $upload = $this->uploadKey($eventId, $fieldName, $repeatInstance);
             if ($recordFolderId === null) {
-                // Already gone: deletion stays idempotent, the fingerprint stays.
+                // Already gone: deletion stays idempotent, and its signature goes all the same.
+                $this->forgetUploadSignature($projectId, $record, $upload);
                 return ['ok' => true, 'deleted' => false, 'fingerprintCleared' => false];
             }
             $deleted = $this->deleteFolderTree($settings, $folderId);
+            $this->forgetUploadSignature($projectId, $record, $upload);
             $fingerprintCleared = $this->clearFingerprintIfRecordIsEmpty($settings, (string) $record, $recordFolderId, $folderId);
             return [
                 'ok' => true,
@@ -772,10 +777,10 @@ class GirderUploaderModule extends AbstractExternalModule
 
         $status = 'unchecked';
         if ($this->isFingerprintCheckEnabled()) {
-            $stored = strtolower(trim((string) $this->getProjectSetting($this->fingerprintSettingKey($record))));
-            if ($stored === '') {
+            $signatures = $this->uploadSignatures($record);
+            if (empty($signatures)) {
                 $status = 'new';
-            } elseif (hash_equals($stored, $fingerprint)) {
+            } elseif ($this->matchesEveryUpload($fingerprint, $signatures)) {
                 $status = 'matched';
             } else {
                 $status = 'mismatch';
@@ -786,40 +791,39 @@ class GirderUploaderModule extends AbstractExternalModule
     }
 
     /**
-     * Once the uploader has confirmed: store the fingerprint on the record's
-     * first upload — or check it again, another upload may have stored one in
-     * the meantime — and hand back the ticket `init-batch` requires.
+     * Once the uploader has confirmed: store the fingerprint of this upload, and
+     * hand back the ticket `init-batch` requires. It is compared again first:
+     * another upload may have stored one in the meantime.
      *
      * A mismatch goes through only with `confirmedMismatch`, the uploader having
-     * seen it. The record keeps its fingerprint and the override leaves a trace.
-     * One that appears only now was never shown, so it is refused.
+     * seen it, and leaves a trace. One that appears only now was never shown, so
+     * it is refused.
      */
-    private function handlePseudonymRegister($payload, $projectId, $instrument, $record)
+    private function handlePseudonymRegister($payload, $projectId, $instrument, $record, $eventId = 0, $repeatInstance = 1)
     {
         $fingerprint = $this->validatedFingerprint($payload, $projectId, $instrument);
         if (is_array($fingerprint)) {
             return $fingerprint;
         }
+        $fieldName = (string) $payload['fieldName'];
+        $withoutNip = isset($payload['withoutNip']) ? max(0, (int) $payload['withoutNip']) : 0;
         if (!$this->isFingerprintCheckEnabled()) {
+            $this->recordMissingNip($record, $fieldName, $withoutNip);
             return ['ok' => true, 'status' => 'unchecked'];
         }
         if ($this->ensurePseudonymKey() === '') {
             return ['ok' => false, 'error' => 'The REDCap pseudonym key is not set.'];
         }
         $confirmedMismatch = isset($payload['confirmedMismatch']) && $payload['confirmedMismatch'] === true;
-        $fieldName = (string) $payload['fieldName'];
+        $upload = $this->uploadKey($eventId, $fieldName, $repeatInstance);
 
-        return $this->withRecordLock($projectId, $record, function () use ($projectId, $record, $fingerprint, $confirmedMismatch, $fieldName) {
-            $settingKey = $this->fingerprintSettingKey($record);
-            $stored = strtolower(trim((string) $this->getProjectSetting($settingKey)));
-            $overridden = false;
-            if ($stored === '') {
-                $this->setProjectSetting($settingKey, $fingerprint);
+        return $this->withRecordLock($projectId, $record, function () use ($projectId, $record, $fingerprint, $confirmedMismatch, $fieldName, $withoutNip, $upload) {
+            $signatures = $this->uploadSignatures($record);
+            if (empty($signatures)) {
                 $status = 'registered';
-            } elseif (hash_equals($stored, $fingerprint)) {
+            } elseif ($this->matchesEveryUpload($fingerprint, $signatures)) {
                 $status = 'matched';
             } elseif ($confirmedMismatch) {
-                $overridden = true;
                 $status = 'overridden';
                 $this->recordMismatchOverride($record, $fieldName);
             } else {
@@ -827,11 +831,64 @@ class GirderUploaderModule extends AbstractExternalModule
                 return $this->fingerprintMismatch();
             }
 
+            $signatures[$upload] = $fingerprint;
+            $this->storeUploadSignatures($record, $signatures);
+            $this->recordMissingNip($record, $fieldName, $withoutNip);
+
             return [
                 'ok' => true,
                 'status' => $status,
-                'ticket' => $this->issuePseudonymTicket($projectId, $record, $fingerprint, $overridden),
+                'ticket' => $this->issuePseudonymTicket($projectId, $record, $upload, $fingerprint),
             ];
+        });
+    }
+
+    /** What identifies an upload on its record: one field holds one upload. */
+    private function uploadKey($eventId, $fieldName, $repeatInstance)
+    {
+        return (int) $eventId . '/' . $fieldName . '/' . max(1, (int) $repeatInstance);
+    }
+
+    /**
+     * A record's signatures, by upload, in one setting per record. A plain value
+     * comes from 2.0.2 or earlier: nothing ties it to an upload, so it stands for
+     * the whole record until the record is emptied.
+     */
+    private function uploadSignatures($record)
+    {
+        $stored = trim((string) $this->getProjectSetting($this->fingerprintSettingKey($record)));
+        if ($stored === '') {
+            return [];
+        }
+        $signatures = json_decode($stored, true);
+        return is_array($signatures) ? $signatures : [self::PSEUDONYM_WHOLE_RECORD => strtolower($stored)];
+    }
+
+    private function storeUploadSignatures($record, array $signatures)
+    {
+        $key = $this->fingerprintSettingKey($record);
+        if (empty($signatures)) {
+            $this->removeProjectSetting($key);
+        } else {
+            $this->setProjectSetting($key, json_encode($signatures, JSON_UNESCAPED_SLASHES));
+        }
+    }
+
+    private function matchesEveryUpload($fingerprint, array $signatures)
+    {
+        return array_unique(array_values($signatures)) === [$fingerprint];
+    }
+
+    /** Its signature goes with the upload, under the lock: the others stay compared. */
+    private function forgetUploadSignature($projectId, $record, $upload)
+    {
+        return $this->withRecordLock($projectId, $record, function () use ($record, $upload) {
+            $signatures = $this->uploadSignatures($record);
+            if (isset($signatures[$upload])) {
+                unset($signatures[$upload]);
+                $this->storeUploadSignatures($record, $signatures);
+            }
+            return ['ok' => true];
         });
     }
 
@@ -842,6 +899,20 @@ class GirderUploaderModule extends AbstractExternalModule
         $this->logProjectEvent(
             'Girder Uploader: patient signature mismatch confirmed',
             "Upload to field {$fieldName} confirmed although its patient signature differs from the record's earlier uploads.",
+            $record
+        );
+    }
+
+    /** The alert of files confirmed without a NIP, in the same two logs. */
+    private function recordMissingNip($record, $fieldName, $count)
+    {
+        if ($count < 1) {
+            return;
+        }
+        $this->log(self::PSEUDONYM_MISSING_NIP_LOG, ['record' => (string) $record, 'field' => $fieldName, 'files' => $count]);
+        $this->logProjectEvent(
+            'Girder Uploader: upload without PatientID confirmed',
+            "Upload to field {$fieldName} confirmed with {$count} file(s) carrying no patient identifier.",
             $record
         );
     }
@@ -1105,40 +1176,35 @@ class GirderUploaderModule extends AbstractExternalModule
         return hash_hmac('sha256', 'girder-uploader-pseudonym-ticket', $this->ensurePseudonymKey(), true);
     }
 
-    private function pseudonymTicketMac($projectId, $record, $fingerprint, $expires, $mode)
+    private function pseudonymTicketMac($projectId, $record, $upload, $fingerprint, $expires)
     {
-        return hash_hmac('sha256', implode('|', [(int) $projectId, (string) $record, $fingerprint, (int) $expires, $mode]), $this->pseudonymTicketKey());
+        return hash_hmac('sha256', implode('|', [(int) $projectId, (string) $record, $upload, $fingerprint, (int) $expires]), $this->pseudonymTicketKey());
     }
 
-    private function issuePseudonymTicket($projectId, $record, $fingerprint, $overridden = false)
+    private function issuePseudonymTicket($projectId, $record, $upload, $fingerprint)
     {
         $expires = time() + self::PSEUDONYM_TICKET_TTL_SECONDS;
-        $mode = $overridden ? self::PSEUDONYM_TICKET_OVERRIDE : self::PSEUDONYM_TICKET_MATCH;
-        return implode('.', [$expires, $fingerprint, $mode, $this->pseudonymTicketMac($projectId, $record, $fingerprint, $expires, $mode)]);
+        return implode('.', [$expires, $fingerprint, $this->pseudonymTicketMac($projectId, $record, $upload, $fingerprint, $expires)]);
     }
 
     /**
-     * A ticket is valid for its record, within its hour, and only while the
-     * record has a fingerprint: its own, unless the uploader overrode a mismatch.
+     * A ticket is valid for its upload of its record, within its hour, and only
+     * while that upload still has this fingerprint.
      */
-    private function verifyPseudonymTicket($projectId, $record, $ticket)
+    private function verifyPseudonymTicket($projectId, $record, $upload, $ticket)
     {
         $parts = explode('.', (string) $ticket);
-        if (count($parts) !== 4 || !ctype_digit($parts[0]) || (int) $parts[0] < time()) {
+        if (count($parts) !== 3 || !ctype_digit($parts[0]) || (int) $parts[0] < time()) {
             return false;
         }
-        [$expires, $fingerprint, $mode, $mac] = $parts;
+        [$expires, $fingerprint, $mac] = $parts;
         if ($this->ensurePseudonymKey() === '') {
             return false;
         }
-        if (!hash_equals($this->pseudonymTicketMac($projectId, $record, $fingerprint, $expires, $mode), $mac)) {
+        if (!hash_equals($this->pseudonymTicketMac($projectId, $record, $upload, $fingerprint, $expires), $mac)) {
             return false;
         }
-        $stored = strtolower(trim((string) $this->getProjectSetting($this->fingerprintSettingKey($record))));
-        if ($stored === '') {
-            return false;
-        }
-        return $mode === self::PSEUDONYM_TICKET_OVERRIDE || hash_equals($stored, $fingerprint);
+        return ($this->uploadSignatures($record)[$upload] ?? '') === $fingerprint;
     }
 
     /**

@@ -281,6 +281,14 @@ impl PseudonymSession {
             .map_err(|e| JsValue::from_str(&e.to_string()))
     }
 
+    /// For files that carry no NIP: the pseudonym then belongs to the record.
+    #[wasm_bindgen(js_name = forRecord)]
+    pub fn for_record(domain: String, record_id: String) -> Result<PseudonymSession, JsValue> {
+        pseudonym::start_without_nip(&domain, &record_id)
+            .map(|request| PseudonymSession { request })
+            .map_err(|e| JsValue::from_str(&e.to_string()))
+    }
+
     #[wasm_bindgen(js_name = blindedElement)]
     pub fn blinded_element(&self) -> String {
         pseudonym::element_to_hex(&self.request.blinded_element())

@@ -274,15 +274,59 @@ test('the worker is asked of the origin the page was reached on', () => {
     );
 });
 
+test('files without NIP are not refused, and the review says so', () => {
+    const entries = [
+        inspected('a.dcm', { format: 'dicom', familyName: 'DOE', givenName: 'JOHN', birthDate: '12/02/1954' }),
+        inspected('b.dcm', { format: 'dicom', familyName: 'ROE', givenName: 'RITA' })
+    ];
+    const groups = core.groupByPatient(entries);
+    const patient = core.patientWithoutNip(groups.missingNip);
+    const review = core.buildTransferReview({
+        recordId: 'REC-42',
+        patient,
+        summary: core.summarizeTransfer(entries),
+        checkStatus: 'new',
+        existingUploads: 0,
+        withoutNipCount: 2
+    });
+
+    assert.equal(groups.patients.length, 0);
+    assert.equal(review.patient[3].value, '(empty)');
+    assert.equal(review.patient[0].value, 'DOE');
+    assert.equal(review.missingNip.title, 'No PatientID');
+    assert.match(review.missingNip.text, /2 different identities/);
+    assert.equal(review.confirmLabel, 'Upload anyway');
+});
+
+test('a file without NIP in a patient\'s batch goes with that patient, after an alert', () => {
+    const entries = [
+        inspected('a.dcm', { format: 'dicom', nip: '1000001', familyName: 'DOE' }),
+        inspected('b.dcm', { format: 'dicom' })
+    ];
+    const groups = core.groupByPatient(entries);
+    const review = core.buildTransferReview({
+        recordId: 'REC-42',
+        patient: groups.patients[0],
+        summary: core.summarizeTransfer(entries),
+        checkStatus: 'matched',
+        existingUploads: 1,
+        withoutNipCount: 1
+    });
+
+    assert.equal(review.missingNip.title, 'No PatientID on 1 file');
+    assert.equal(review.confirmLabel, 'Upload anyway');
+    assert.equal(review.patient[3].value, '1000001');
+});
+
 test('a batch of several patients is refused as a whole', () => {
     const groups = core.groupByPatient([
         inspected('a.dcm', { nip: '1000001', familyName: 'DOE', givenName: 'JOHN' }),
         inspected('b.dcm', { nip: '1000002', familyName: 'ROE', givenName: 'RITA' })
     ]);
-    const message = core.buildMultiplePatientsError(groups.patients);
+    const message = core.buildMultiplePatientsError();
 
     assert.equal(groups.patients.length, 2);
-    assert.match(message, /2 different patients/);
+    assert.match(message, /^These files belong to different patients\./);
     assert.doesNotMatch(message, /DOE|JOHN|ROE|RITA|1000001|1000002/, 'it is stored in the REDCap field');
     assert.match(message, /Nothing was uploaded/);
 });

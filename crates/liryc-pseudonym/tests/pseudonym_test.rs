@@ -487,3 +487,24 @@ fn rewritten_uids_are_valid_dicom_uids() {
         );
     }
 }
+
+#[test]
+fn files_without_nip_have_an_input_of_their_own() {
+    let input = liryc_pseudonym::input_without_nip("redcap:12", " REC-1 ");
+
+    assert_eq!(input, b"liryc-pseudonym-no-nip-v1\0redcap:12\0REC-1");
+    assert_ne!(
+        input,
+        liryc_pseudonym::input_without_nip("redcap:12", "REC-2"),
+        "one offset per record"
+    );
+    assert_ne!(
+        input,
+        liryc_pseudonym::input_without_nip("redcap:13", "REC-1")
+    );
+    assert_ne!(
+        input,
+        liryc_pseudonym::input_for("redcap:12", "REC-1"),
+        "no NIP can reach it"
+    );
+}

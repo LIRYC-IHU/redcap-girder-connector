@@ -74,15 +74,26 @@ function evaluate(GirderUploaderModule $module, string $record = 'REC-1', ?strin
     ]);
 }
 
-function register(GirderUploaderModule $module, string $fingerprint, string $record = 'REC-1', bool $confirmedMismatch = false): array
+function register(GirderUploaderModule $module, string $fingerprint, string $record = 'REC-1', bool $confirmedMismatch = false, int $eventId = 43): array
 {
     return invoke($module, 'handlePseudonymRegister', [
         ['fieldName' => 'scans', 'fingerprint' => $fingerprint, 'confirmedMismatch' => $confirmedMismatch],
         12,
         'imaging',
         $record,
+        $eventId,
+        1,
     ]);
 }
+
+/** The signatures stored for a record, by upload. */
+function signatures(GirderUploaderModule $module, string $record = 'REC-1'): array
+{
+    return invoke($module, 'uploadSignatures', [$record]);
+}
+
+const UPLOAD = '43/scans/1';
+const OTHER_UPLOAD = '44/scans/1';
 
 function check(GirderUploaderModule $module, string $fingerprint, string $record = 'REC-1'): array
 {
@@ -205,7 +216,7 @@ return function ($t): void {
         $other = check($module, FINGERPRINT_B);
         $t->assertTrue($other['ok'], 'a mismatch is for the uploader to see, not an error');
         $t->assertSame('mismatch', $other['status']);
-        $t->assertSame(FINGERPRINT_A, $module->getProjectSetting('pseudonym-fingerprint:REC-1'));
+        $t->assertSame([UPLOAD => FINGERPRINT_A], signatures($module));
         $t->assertSame('[PSEUDONYM] fingerprint mismatch', end($module->logs)[0]);
     });
 
@@ -233,7 +244,7 @@ return function ($t): void {
 
         $t->assertTrue($answer['ok']);
         $t->assertSame('registered', $answer['status']);
-        $t->assertSame(FINGERPRINT_A, $module->getProjectSetting('pseudonym-fingerprint:REC-1'));
+        $t->assertSame([UPLOAD => FINGERPRINT_A], signatures($module));
     });
 
     $t->test('a later upload of the same patient is accepted', function ($t): void {
@@ -252,24 +263,105 @@ return function ($t): void {
 
         $t->assertFalse($answer['ok']);
         $t->assertSame('fingerprint-mismatch', $answer['code']);
-        $t->assertSame(FINGERPRINT_A, $module->getProjectSetting('pseudonym-fingerprint:REC-1'), 'the stored fingerprint is kept');
+        $t->assertSame([UPLOAD => FINGERPRINT_A], signatures($module), 'the stored fingerprint is kept');
         $t->assertSame([], $module->projectEvents);
     });
 
     $t->test('a confirmed mismatch goes through and leaves an alert', function ($t): void {
         $module = pseudonymTestModule();
         register($module, FINGERPRINT_A);
-        $answer = register($module, FINGERPRINT_B, 'REC-1', true);
+        $answer = register($module, FINGERPRINT_B, 'REC-1', true, 44);
 
         $t->assertTrue($answer['ok']);
         $t->assertSame('overridden', $answer['status']);
-        $t->assertSame(FINGERPRINT_A, $module->getProjectSetting('pseudonym-fingerprint:REC-1'), "the record keeps its fingerprint");
-        $t->assertTrue(invoke($module, 'verifyPseudonymTicket', [12, 'REC-1', $answer['ticket']]));
+        $t->assertSame([UPLOAD => FINGERPRINT_A, OTHER_UPLOAD => FINGERPRINT_B], signatures($module), 'one each');
+        $t->assertTrue(invoke($module, 'verifyPseudonymTicket', [12, 'REC-1', OTHER_UPLOAD, $answer['ticket']]));
 
         $t->assertSame(GirderUploaderModule::PSEUDONYM_OVERRIDE_LOG, end($module->logs)[0]);
         $t->assertSame(['record' => 'REC-1', 'field' => 'scans'], end($module->logs)[1]);
         $t->assertSame(1, count($module->projectEvents));
         $t->assertSame('REC-1', $module->projectEvents[0][2]);
+    });
+
+    $t->test('deleting an upload takes its signature, and only its own', function ($t): void {
+        // X, Y forced, X deleted: only Y is compared from then on.
+        $module = pseudonymTestModule();
+        register($module, FINGERPRINT_A);
+        register($module, FINGERPRINT_B, 'REC-1', true, 44);
+        invoke($module, 'forgetUploadSignature', [12, 'REC-1', UPLOAD]);
+        $module->projectEvents = [];
+
+        $t->assertSame([OTHER_UPLOAD => FINGERPRINT_B], signatures($module));
+        $t->assertSame('matched', check($module, FINGERPRINT_B)['status']);
+        $t->assertSame('matched', register($module, FINGERPRINT_B)['status']);
+        $t->assertSame([], $module->projectEvents, 'no new alert');
+        $t->assertSame('mismatch', check($module, FINGERPRINT_A)['status'], 'X is gone with its upload');
+    });
+
+    $t->test('with two patients on a record, each differs from the other', function ($t): void {
+        $module = pseudonymTestModule();
+        register($module, FINGERPRINT_A);
+        register($module, FINGERPRINT_B, 'REC-1', true, 44);
+
+        foreach ([FINGERPRINT_A, FINGERPRINT_B, 'c3'] as $fingerprint) {
+            $t->assertSame('mismatch', check($module, $fingerprint)['status'], $fingerprint);
+        }
+    });
+
+    $t->test('the last signature gone, the record is new again', function ($t): void {
+        $module = pseudonymTestModule();
+        register($module, FINGERPRINT_A);
+        invoke($module, 'forgetUploadSignature', [12, 'REC-1', UPLOAD]);
+
+        $t->assertSame(null, $module->getProjectSetting('pseudonym-fingerprint:REC-1'));
+        $t->assertSame('new', check($module, FINGERPRINT_B)['status']);
+    });
+
+    $t->test('a second upload into the same field is compared, not silently replaced', function ($t): void {
+        // Two simultaneous first uploads to one field: the second one was told `new`.
+        $module = pseudonymTestModule();
+        register($module, FINGERPRINT_A);
+
+        $t->assertFalse(register($module, FINGERPRINT_B)['ok']);
+        $t->assertSame([UPLOAD => FINGERPRINT_A], signatures($module));
+    });
+
+    $t->test('a signature stored by 2.0.2 stands for the whole record', function ($t): void {
+        $module = pseudonymTestModule(['pseudonym-fingerprint:REC-1' => FINGERPRINT_A]);
+
+        $t->assertSame('matched', check($module, FINGERPRINT_A)['status']);
+        $t->assertSame('mismatch', check($module, FINGERPRINT_B)['status']);
+
+        register($module, FINGERPRINT_A);
+        invoke($module, 'forgetUploadSignature', [12, 'REC-1', UPLOAD]);
+        $t->assertSame('mismatch', check($module, FINGERPRINT_B)['status'], 'an upload leaving does not take it');
+    });
+
+    $t->test('files without NIP go through and leave an alert, check or no check', function ($t): void {
+        foreach ([true, false] as $checked) {
+            $module = pseudonymTestModule(['pseudonym-fingerprint-check' => $checked]);
+            $answer = invoke($module, 'handlePseudonymRegister', [
+                ['fieldName' => 'scans', 'fingerprint' => FINGERPRINT_A, 'withoutNip' => 3],
+                12, 'imaging', 'REC-1',
+            ]);
+
+            $t->assertTrue($answer['ok']);
+            $t->assertSame(GirderUploaderModule::PSEUDONYM_MISSING_NIP_LOG, end($module->logs)[0]);
+            $t->assertSame(3, end($module->logs)[1]['files']);
+            $t->assertSame(1, count($module->projectEvents));
+        }
+    });
+
+    $t->test('a refused upload raises no alert about its files', function ($t): void {
+        $module = pseudonymTestModule();
+        register($module, FINGERPRINT_A);
+        $answer = invoke($module, 'handlePseudonymRegister', [
+            ['fieldName' => 'scans', 'fingerprint' => FINGERPRINT_B, 'withoutNip' => 1],
+            12, 'imaging', 'REC-1',
+        ]);
+
+        $t->assertFalse($answer['ok']);
+        $t->assertSame([], $module->projectEvents);
     });
 
     $t->test('confirming when nothing differs raises no alert', function ($t): void {
@@ -338,11 +430,12 @@ return function ($t): void {
         $module = pseudonymTestModule();
         $ticket = register($module, FINGERPRINT_A)['ticket'];
 
-        $t->assertTrue(invoke($module, 'verifyPseudonymTicket', [12, 'REC-1', $ticket]));
-        $t->assertFalse(invoke($module, 'verifyPseudonymTicket', [12, 'REC-2', $ticket]), 'another record');
-        $t->assertFalse(invoke($module, 'verifyPseudonymTicket', [13, 'REC-1', $ticket]), 'another project');
-        $t->assertFalse(invoke($module, 'verifyPseudonymTicket', [12, 'REC-1', '']), 'no ticket');
-        $t->assertFalse(invoke($module, 'verifyPseudonymTicket', [12, 'REC-1', substr($ticket, 0, -1) . 'x']), 'tampered');
+        $t->assertTrue(invoke($module, 'verifyPseudonymTicket', [12, 'REC-1', UPLOAD, $ticket]));
+        $t->assertFalse(invoke($module, 'verifyPseudonymTicket', [12, 'REC-2', UPLOAD, $ticket]), 'another record');
+        $t->assertFalse(invoke($module, 'verifyPseudonymTicket', [13, 'REC-1', UPLOAD, $ticket]), 'another project');
+        $t->assertFalse(invoke($module, 'verifyPseudonymTicket', [12, 'REC-1', OTHER_UPLOAD, $ticket]), 'another upload');
+        $t->assertFalse(invoke($module, 'verifyPseudonymTicket', [12, 'REC-1', UPLOAD, '']), 'no ticket');
+        $t->assertFalse(invoke($module, 'verifyPseudonymTicket', [12, 'REC-1', UPLOAD, substr($ticket, 0, -1) . 'x']), 'tampered');
     });
 
     $t->test('a ticket dies with the fingerprint it was issued for', function ($t): void {
@@ -350,27 +443,24 @@ return function ($t): void {
         $ticket = register($module, FINGERPRINT_A)['ticket'];
         $module->removeProjectSetting('pseudonym-fingerprint:REC-1');
 
-        $t->assertFalse(invoke($module, 'verifyPseudonymTicket', [12, 'REC-1', $ticket]));
+        $t->assertFalse(invoke($module, 'verifyPseudonymTicket', [12, 'REC-1', UPLOAD, $ticket]));
     });
 
-    $t->test('an ordinary ticket cannot pass for a confirmed mismatch', function ($t): void {
+    $t->test('a ticket holds only for a signature the record accepted', function ($t): void {
         $module = pseudonymTestModule();
         $ticket = register($module, FINGERPRINT_B, 'REC-2')['ticket'];
-        $module->setProjectSetting('pseudonym-fingerprint:REC-2', FINGERPRINT_A);
-        $t->assertFalse(invoke($module, 'verifyPseudonymTicket', [12, 'REC-2', $ticket]), 'its fingerprint is no longer the record\'s');
+        $module->setProjectSetting('pseudonym-fingerprint:REC-2', json_encode([UPLOAD => FINGERPRINT_A]));
 
-        [$expires, $fingerprint, , $mac] = explode('.', $ticket);
-        $forged = implode('.', [$expires, $fingerprint, GirderUploaderModule::PSEUDONYM_TICKET_OVERRIDE, $mac]);
-        $t->assertFalse(invoke($module, 'verifyPseudonymTicket', [12, 'REC-2', $forged]), 'the mode is signed');
+        $t->assertFalse(invoke($module, 'verifyPseudonymTicket', [12, 'REC-2', UPLOAD, $ticket]));
     });
 
     $t->test('a confirmed mismatch keeps a ticket only while the record has a fingerprint', function ($t): void {
         $module = pseudonymTestModule();
         register($module, FINGERPRINT_A);
-        $ticket = register($module, FINGERPRINT_B, 'REC-1', true)['ticket'];
+        $ticket = register($module, FINGERPRINT_B, 'REC-1', true, 44)['ticket'];
         $module->removeProjectSetting('pseudonym-fingerprint:REC-1');
 
-        $t->assertFalse(invoke($module, 'verifyPseudonymTicket', [12, 'REC-1', $ticket]));
+        $t->assertFalse(invoke($module, 'verifyPseudonymTicket', [12, 'REC-1', OTHER_UPLOAD, $ticket]));
     });
 
     $t->test('a batch of deidentified files needs a ticket', function ($t): void {
@@ -380,7 +470,7 @@ return function ($t): void {
                 'fieldName' => 'scans',
                 'pseudonymTicket' => $ticket,
                 'files' => [['relativePath' => '0001.dcm', 'fileSize' => 10, 'deidentified' => $deidentified]],
-            ], 12, 'imaging', null, 'REC-1', 1]);
+            ], 12, 'imaging', null, 'REC-1', 1, 43]);
         };
         $ticketError = 'The patient fingerprint of this upload was not checked against the record. Start the upload again.';
 

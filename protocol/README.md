@@ -68,6 +68,7 @@ y     = Finalize(x, N)                  browser, 64 bytes
 
 ```
 x = "liryc-pseudonym-v1" ‖ 0x00 ‖ domain ‖ 0x00 ‖ nip      (UTF-8)
+x = "liryc-pseudonym-no-nip-v1" ‖ 0x00 ‖ domain ‖ 0x00 ‖ record_id    when no file has a NIP
 fingerprint = hex(SHA-512("liryc-pseudonym-fingerprint-v1" ‖ y)[0..1])    two hex characters
 seed        = big-endian u64 of SHA-512("liryc-pseudonym-date-offset-v1" ‖ y)[0..8]
 offset_days = −(18262 + seed mod 18263)                    ∈ [−36524, −18262]
@@ -92,17 +93,20 @@ result is all ASCII digits strip leading zeros. An empty result means "no NIP".
 `pseudonym-check` — payload `{ "fieldName", "fingerprint" }`. Called **before** the
 uploader confirms; stores nothing. Refused when Girder does not answer.
 `existingUploads` counts the record's field folders in Girder that hold something:
-`new` with a non-zero count means uploads that predate fingerprints.
+`new` with a non-zero count means uploads that predate fingerprints. REDCap stores one
+fingerprint per upload, in one setting per record: `{ "<event>/<field>/<instance>": "a1" }`.
+`matched` means the fingerprint is the same as every one of them.
 
 ```json
 { "ok": true, "status": "new" | "matched" | "mismatch" | "unchecked", "existingUploads": 0 }
 ```
 
-`pseudonym-register` — payload `{ "fieldName", "fingerprint", "confirmedMismatch" }`.
+`pseudonym-register` — payload `{ "fieldName", "fingerprint", "confirmedMismatch", "withoutNip" }`.
+`withoutNip` is the number of files without NIP the uploader confirmed: it raises the alert.
 Called **once the uploader has confirmed**; stores the fingerprint when the record has
 none (comparing again under a per-record lock) and issues the ticket. `confirmedMismatch`
-is `true` when the uploader was shown a mismatch and chose to go on: the record keeps its
-fingerprint and the answer is `overridden`. A mismatch without it was never shown, and is
+is `true` when the uploader was shown a mismatch and chose to go on: the upload gets its
+fingerprint all the same and the answer is `overridden`. A mismatch without it was never shown, and is
 refused.
 
 ```json

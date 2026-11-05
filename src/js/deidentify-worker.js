@@ -49,7 +49,11 @@ const handlers = {
     },
 
     'pseudonym-start'(module, data) {
-        const session = new module.PseudonymSession(String(data.domain || ''), String(data.nip || ''));
+        const domain = String(data.domain || '');
+        const nip = String(data.nip || '');
+        const session = nip
+            ? new module.PseudonymSession(domain, nip)
+            : module.PseudonymSession.forRecord(domain, String(data.recordId || ''));
         const sessionId = nextSessionId;
         nextSessionId += 1;
         pseudonymSessions.set(sessionId, session);

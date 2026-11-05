@@ -115,8 +115,9 @@ Dans l'ordre, avant tout envoi :
 | Aucune signature, aucun envoi dans Girder | revue « premier envoi » ; signature stockée après validation |
 | Aucune signature, envois déjà présents | revue « comparaison impossible » : ils datent d'une version sans signature ; signature stockée après validation |
 | Signature identique | revue « même signature », avec le nombre d'envois déjà présents |
+| Signature différente d'au moins un envoi présent | alerte rouge, même si elle correspond à un autre envoi du record |
 | Signature différente | **alerte rouge** ; l'utilisateur peut annuler ou valider malgré tout (« Upload anyway ») |
-| Discordance validée | envoi effectué ; le record garde sa signature ; alerte tracée dans le journal du projet (*Logging*), dans celui du module et sur le champ, où le widget continue de l'afficher |
+| Discordance validée | envoi effectué ; l'envoi garde sa propre signature ; alerte tracée dans le journal du projet (*Logging*), dans celui du module et sur le champ, où le widget continue de l'afficher |
 | Discordance apparue après la validation (envoi simultané) | **refus** : l'utilisateur ne l'a pas vue ; il recommence et la voit |
 | L'utilisateur annule | rien n'est stocké ni envoyé, le champ et le formulaire restent inchangés (une évaluation a eu lieu : elle compte dans la limite de débit) |
 
@@ -127,8 +128,18 @@ ne permet pas de repérer un doublon entre records. Pour qui détient la clé et
 personne, elle écarte 255 records sur 256 : cette protection dépend donc de la taille de
 la cohorte.
 
-Le ticket est signé (HMAC, valable 1 h) et lié au record, à la signature et au fait que
-la discordance ait été validée ou non ; `init-batch` le refuse s'il manque dès lors que le
+**Une signature par envoi, dans un réglage par record.** Le réglage du record contient une
+entrée par envoi, désigné par son événement, son champ et son instance, connus avant la
+création du dossier Girder. Un nouveau fichier est comparé à **toutes** les entrées, et
+supprimer un envoi retire la sienne : seuls les envois encore présents comptent. Une entrée
+existe dès la validation, avant la fin de l'envoi, ce qui protège contre deux envois
+simultanés ; en contrepartie, un envoi en échec laisse la sienne jusqu'à ce que le champ
+soit renvoyé, et un fichier supprimé directement dans Girder aussi. Le cas se règle en
+validant l'alerte. Un record qui a connu une discordance validée porte ainsi plusieurs
+octets de signature au lieu d'un. Une valeur simple, stockée par la 2.0.2 ou avant, vaut pour
+tout le record jusqu'à ce qu'il soit vidé.
+
+Le ticket est signé (HMAC, valable 1 h) et lié au record, à l'envoi et à la signature ; `init-batch` le refuse s'il manque dès lors que le
 lot contient des fichiers désidentifiés. La signature
 est stockée dans un réglage interne du module, jamais dans le champ du formulaire (elle
 partirait dans les exports), jamais dans Girder.
@@ -139,14 +150,15 @@ Une signature enregistrée par erreur est effacée quand on supprime le contenu 
 **Le contrôle est optionnel** : la case de projet `pseudonym-fingerprint-check` (cochée par
 défaut) l'active. Décochée, aucune signature n'est stockée ni comparée et `init-batch`
 n'exige pas de ticket. L'évaluation reste faite, car elle fournit le décalage et la clé
-UID : un NIP manquant reste bloquant, et un lot mêlant plusieurs NIP reste refusé. Les
+UID : un lot mêlant plusieurs NIP reste refusé. Les
 signatures déjà stockées sont conservées et de nouveau comparées si la case est recochée.
 
-Le navigateur écarte par ailleurs, avant tout appel réseau :
+Selon les NIP lus dans le lot :
 
 | Situation | Résultat |
 |---|---|
-| Fichier à désidentifier sans NIP | ce fichier est mis de côté (motif : NIP manquant), le reste du lot continue |
+| Fichier sans NIP, dans le lot d'un patient | alerte ; s'il est validé, il suit ce patient (mêmes décalage et clé UID) |
+| Aucun fichier du lot n'a de NIP | alerte ; s'il est validé, pseudonyme calculé sur le `record_id` |
 | Plusieurs NIP distincts dans le lot | **le lot entier est refusé** |
 
 ### 3.4 Dates
@@ -214,6 +226,16 @@ lu dans les réglages du projet et non reçu du navigateur. `pseudonym-domain` e
 aux super-utilisateurs : un droit de conception sur un projet ne donne pas la clé d'un
 autre. Conserver ce réglage permet de migrer un projet sans changer ses pseudonymes.
 
+**Fichiers sans NIP.** Ils ne sont jamais refusés d'office : la fenêtre de revue affiche
+`(empty)` et une alerte, l'utilisateur peut valider, et l'alerte est tracée même si le
+contrôle de signature est décoché. L'entrée de l'OPRF porte alors le `record_id`, sous un
+préfixe qu'aucun NIP ne peut atteindre : un NIP vide donnerait à tous ces fichiers le même
+décalage dans le projet, et une seule vraie date les trahirait tous. Trois conséquences :
+ces fichiers ont le calendrier du record et non celui d'un patient, donc l'intervalle avec
+les examens d'un patient n'a pas de sens ; leur signature diffère de celle du patient du
+record, ce qui déclenche aussi l'alerte de discordance ; et rien ne garantit qu'ils concernent une
+seule personne, seuls les noms lus dans les fichiers permettent de le signaler.
+
 ## 5. Limites
 
 - **Le code client est servi par REDCap.** Un administrateur REDCap *malveillant* peut
@@ -224,6 +246,8 @@ autre. Conserver ce réglage permet de migrer un projet sans changer ses pseudon
   (fausses alertes au contrôle qualité), tous les décalages (calendriers rompus) et tous les
   UID. Elle se sauvegarde comme une clé de chiffrement, et une politique de gestion est à
   rédiger (MR-SEC-09, MR-CNS-03). Même chose pour le domaine.
+- **Fichier sans NIP dans le lot d'un patient** : il est rattaché à ce patient sur la seule
+  validation de l'utilisateur. Une erreur de sa part mélange deux personnes dans un record.
 - **NIP hétérogènes** : selon le système, le champ « identifiant » peut porter l'IPP, un
   numéro de séjour ou une saisie manuelle. Le contrôle le signale par une alerte. Si elle
   est validée, ou si le contrôle est décoché, deux NIP différents dans un record donnent
@@ -288,15 +312,19 @@ Réglages :
 
 ## 8. Tests de bout en bout
 
-1. NIP manquant ⇒ fichier mis de côté avec son motif ; si plus rien ne reste, rien n'est
-   envoyé.
+1. NIP manquant ⇒ alerte et `(empty)` dans la fenêtre de revue. Annulé : rien n'est envoyé.
+   Validé : envoi effectué, alerte dans les deux journaux et sur le champ. Dans le lot d'un
+   patient, le fichier suit ce patient ; dans un lot sans aucun NIP, le décalage est propre
+   au record.
 2. Premier envoi du record ⇒ la fenêtre de revue montre le résumé et « premier envoi » ; après
    validation, signature stockée ; dans Girder, dates décalées, date de naissance vide,
    âge en années.
 3. Envoi suivant, même patient ⇒ accepté ; intervalle entre les examens exact dans Girder.
 4. Envoi suivant, autre patient ⇒ alerte dans la fenêtre de revue. Annulé : rien n'est
-   envoyé ni tracé. Validé : envoi effectué, signature du record inchangée, alerte dans les
-   deux journaux et sur le champ, y compris après actualisation depuis Girder.
+   envoyé ni tracé. Validé : envoi effectué, une signature par envoi, alerte dans les deux
+   journaux et sur le champ, y compris après actualisation depuis Girder. Le premier fichier
+   supprimé, sa signature part avec lui, et renvoyer ce second patient ne déclenche plus
+   d'alerte.
 5. Deux NIP dans un même lot ⇒ lot refusé.
 6. Deux premiers envois simultanés avec des NIP différents ⇒ un seul passe : pour l'autre,
    la discordance apparaît après sa validation.

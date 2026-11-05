@@ -21,6 +21,7 @@ use sha2::{Digest, Sha256, Sha512};
 const CONTEXT_STRING: &[u8] = b"OPRFV1-\x01-ristretto255-SHA512";
 
 const INPUT_PREFIX: &[u8] = b"liryc-pseudonym-v1";
+const NO_NIP_INPUT_PREFIX: &[u8] = b"liryc-pseudonym-no-nip-v1";
 const FINGERPRINT_LABEL: &[u8] = b"liryc-pseudonym-fingerprint-v1";
 const DATE_OFFSET_LABEL: &[u8] = b"liryc-pseudonym-date-offset-v1";
 const UID_KEY_LABEL: &[u8] = b"liryc-pseudonym-uid-key-v1";
@@ -139,6 +140,33 @@ pub fn input_for(domain: &str, normalized_nip: &str) -> Vec<u8> {
 // --- Client -----------------------------------------------------------------
 
 /// Blind a NIP with fresh randomness.
+/// `"liryc-pseudonym-no-nip-v1" ‖ 0x00 ‖ domain ‖ 0x00 ‖ record_id`.
+///
+/// The input of files that carry no NIP. It holds the record, not a blank NIP:
+/// otherwise every such file of a project would share one date offset, and one
+/// real date would give all the others away. Its own prefix keeps it from ever
+/// meeting a patient's input.
+pub fn input_without_nip(domain: &str, record_id: &str) -> Vec<u8> {
+    let record_id = record_id.trim();
+    let mut input =
+        Vec::with_capacity(NO_NIP_INPUT_PREFIX.len() + domain.len() + record_id.len() + 2);
+    input.extend_from_slice(NO_NIP_INPUT_PREFIX);
+    input.push(0);
+    input.extend_from_slice(domain.as_bytes());
+    input.push(0);
+    input.extend_from_slice(record_id.as_bytes());
+    input
+}
+
+/// Start the protocol for files that carry no NIP, see [`input_without_nip`].
+pub fn start_without_nip(domain: &str, record_id: &str) -> Result<Request, PseudonymError> {
+    let blind = random_scalar()?;
+    Ok(start_with_blind(
+        input_without_nip(domain, record_id),
+        blind,
+    ))
+}
+
 pub fn start(domain: &str, nip: &str) -> Result<Request, PseudonymError> {
     let nip = normalize_nip(nip).ok_or(PseudonymError::MissingNip)?;
     let blind = random_scalar()?;
