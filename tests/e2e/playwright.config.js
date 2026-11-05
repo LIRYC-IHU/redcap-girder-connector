@@ -3,6 +3,7 @@ const { defineConfig, devices } = require('@playwright/test');
 
 module.exports = defineConfig({
     testDir: './specs',
+    globalSetup: './helpers/global-setup.js',
     // The scenarios share one REDCap project and one Girder collection.
     fullyParallel: false,
     workers: 1,

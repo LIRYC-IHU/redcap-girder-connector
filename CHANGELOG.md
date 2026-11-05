@@ -1,5 +1,24 @@
 # Changelog
 
+## 2.0.3
+
+### Changed
+
+- **Each upload has its own signature**, in the one setting REDCap keeps per record. The
+  record kept a single signature, the first, so after forcing a second patient and
+  deleting the first file, sending that second patient again raised a false alert. A new
+  upload is now compared to every upload still on the record, and deleting one takes its
+  signature with it. A signature stored by 2.0.2 or earlier stands for the whole record
+  until it is emptied.
+- **A batch of several patients is refused without saying how many.**
+- **A file without a PatientID is no longer refused.** The review window shows `(empty)`
+  with an alert, and the uploader can confirm it. The alert goes to the project log,
+  the module log and the field, whether or not the signature check is on. In a
+  patient's batch, the file goes with that patient. In a batch without any NIP, the
+  pseudonym is computed on the record, under an input of its own: a blank NIP would
+  have given every such file of a project the same date offset. Their dates are then on
+  the record's own calendar, and intervals with a patient's uploads are meaningless.
+
 ## 2.0.2
 
 **Install this version rather than 2.0.1, which left fluoroscopy out of uploads.**

@@ -348,14 +348,14 @@
         var root = document.createElement('div');
         root.className = 'girder-review';
 
-        if (review.check) {
+        [review.missingNip, review.check].filter(Boolean).forEach(function (notice) {
             var alert = document.createElement('div');
-            alert.className = 'girder-review-check girder-review-check-' + review.check.level;
-            alert.setAttribute('role', review.mismatch ? 'alert' : 'status');
-            alert.appendChild(textElement('strong', '', review.check.title));
-            alert.appendChild(textElement('div', '', review.check.text));
+            alert.className = 'girder-review-check girder-review-check-' + notice.level;
+            alert.setAttribute('role', notice.level === 'danger' ? 'alert' : 'status');
+            alert.appendChild(textElement('strong', '', notice.title));
+            alert.appendChild(textElement('div', '', notice.text));
             root.appendChild(alert);
-        }
+        });
 
         root.appendChild(textElement('p', 'girder-review-record', 'Record ' + review.recordId));
 
@@ -436,7 +436,7 @@
                     },
                     {
                         text: review.confirmLabel,
-                        'class': review.mismatch ? 'girder-review-confirm girder-review-confirm-danger' : 'girder-review-confirm',
+                        'class': review.mismatch || review.missingNip ? 'girder-review-confirm girder-review-confirm-danger' : 'girder-review-confirm',
                         click: function () {
                             confirmed = true;
                             window.jQuery(this).dialog('close');
@@ -480,14 +480,14 @@
         }
 
         var groups = core.groupByPatient(entries);
-        groups.missingNip.forEach(function (entry) {
-            rejected.push(core.rejection(entry.file, 'deidentification', core.MISSING_NIP_REASON));
-        });
         if (groups.patients.length > 1) {
-            throw new Error(core.buildMultiplePatientsError(groups.patients));
+            throw new Error(core.buildMultiplePatientsError());
         }
-        var patient = groups.patients[0] || null;
-        var eligible = (patient ? patient.entries : []).concat(groups.passthrough);
+        // Files without NIP are never refused: the review window tells, the uploader decides.
+        var withoutNip = groups.missingNip;
+        var patient = groups.patients[0] || (withoutNip.length ? core.patientWithoutNip(withoutNip) : null);
+        var eligible = (groups.patients.length ? patient.entries.concat(withoutNip) : withoutNip)
+            .concat(groups.passthrough);
         if (!eligible.length) {
             return { entries: [], keys: null, ticket: '', skipped: skipped };
         }
@@ -503,7 +503,8 @@
             var session = await bridge.run({
                 type: 'pseudonym-start',
                 domain: String(pseudonymConfig.domain || ''),
-                nip: patient.nip
+                nip: patient.nip,
+                recordId: config.recordId
             });
             var evaluation = await moduleAjax('pseudonym-evaluate', {
                 fieldName: fieldName,
@@ -536,7 +537,8 @@
             setAsideCount: rejected.length + skipped,
             setAside: rejected,
             checkStatus: checkStatus,
-            existingUploads: existingUploads
+            existingUploads: existingUploads,
+            withoutNipCount: withoutNip.length
         }));
         if (!confirmed) {
             return null;
@@ -549,11 +551,16 @@
             var registration = await moduleAjax('pseudonym-register', {
                 fieldName: fieldName,
                 fingerprint: pseudonym.fingerprint,
-                confirmedMismatch: checkStatus === 'mismatch'
+                confirmedMismatch: checkStatus === 'mismatch',
+                withoutNip: withoutNip.length
             });
             ticket = registration.ticket || '';
-            if (registration.status === 'overridden') {
-                patientAlert = { type: 'fingerprint-mismatch', confirmedAt: new Date().toISOString() };
+            if (registration.status === 'overridden' || withoutNip.length) {
+                patientAlert = {
+                    type: registration.status === 'overridden' ? 'fingerprint-mismatch' : 'missing-nip',
+                    withoutNip: withoutNip.length,
+                    confirmedAt: new Date().toISOString()
+                };
             }
         }
 
@@ -906,11 +913,20 @@
                 + '</div>';
         }
 
-        var patientAlertLine = payload.patientAlert
-            ? '<div class="girder-file-alert"><strong>Patient signature mismatch:</strong> '
-                + 'sent although it differs from the earlier uploads of this record. Confirmed by the uploader on '
-                + escapeHtml(String(payload.patientAlert.confirmedAt || 'an unknown date')) + '.</div>'
+        var patientAlert = payload.patientAlert || null;
+        var confirmedOn = patientAlert
+            ? ' Confirmed by the uploader on ' + escapeHtml(String(patientAlert.confirmedAt || 'an unknown date')) + '.'
             : '';
+        var patientAlertLine = '';
+        if (patientAlert && patientAlert.type === 'fingerprint-mismatch') {
+            patientAlertLine += '<div class="girder-file-alert"><strong>Patient signature mismatch:</strong> '
+                + 'sent although it differs from the earlier uploads of this record.' + confirmedOn + '</div>';
+        }
+        if (patientAlert && Number(patientAlert.withoutNip) > 0) {
+            patientAlertLine += '<div class="girder-file-alert"><strong>No PatientID:</strong> '
+                + escapeHtml(String(patientAlert.withoutNip)) + ' file(s) sent without a patient identifier.'
+                + confirmedOn + '</div>';
+        }
 
         target.innerHTML = ''
             + '<div class="' + cardClass + '">'

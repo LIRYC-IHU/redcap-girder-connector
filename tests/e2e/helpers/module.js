@@ -47,9 +47,10 @@ function removeSetting(pid, key) {
     sql(`DELETE FROM redcap_external_module_settings WHERE ${scope(pid)} AND \`key\` = ${quote(key)}`);
 }
 
-/** The patient fingerprint REDCap stores for a record, or null. */
+/** The distinct patient fingerprints of a record's uploads, comma-separated, or null. */
 function storedFingerprint(recordId) {
-    return getProjectSetting(`pseudonym-fingerprint:${recordId}`);
+    const stored = getProjectSetting(`pseudonym-fingerprint:${recordId}`);
+    return stored === null ? null : [...new Set(Object.values(JSON.parse(stored)))].join(',');
 }
 
 function setFingerprintCheck(enabled) {
@@ -71,6 +72,12 @@ function recentEvaluations() {
     return Number(sql(`SELECT COUNT(*) FROM redcap_external_modules_log
         WHERE external_module_id = ${moduleId} AND project_id = ${projectId()}
         AND message = 'pseudonym-evaluate' AND timestamp > NOW() - INTERVAL 1 DAY`) || 0);
+}
+
+/** Forget the evaluations of earlier runs, which count against the daily limit. */
+function forgetEvaluations() {
+    const moduleId = Number(loadState().module.externalModuleId);
+    sql(`DELETE FROM redcap_external_modules_log WHERE external_module_id = ${moduleId} AND message = 'pseudonym-evaluate'`);
 }
 
 /** How many times the module logged `message` for the project. */
@@ -142,6 +149,7 @@ module.exports = {
     countLogs,
     countProjectLogs,
     getSystemSetting,
+    forgetEvaluations,
     eventFolderName,
     ensureProjectUser,
     removeSetting,

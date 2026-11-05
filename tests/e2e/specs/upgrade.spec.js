@@ -144,6 +144,12 @@ test.describe(`update from ${FROM}`, () => {
         expect(module_.getSystemSetting('version')).toBe(current());
         expect(module_.getSystemSetting('pseudonym-redcap-key')).toMatch(/^[0-9a-f]{64}$/);
         expect(module_.getSystemSetting('pseudonym-daily-limit')).toBe('500');
+
+        // Back to the stack's key: under a fresh one, the two test patients would share
+        // their signature once in 256 runs, and the mismatch below would not show.
+        if (key) {
+            module_.setSetting(null, 'pseudonym-redcap-key', 'string', key);
+        }
     });
 
     test('the project keeps its settings, and the check is on', async () => {

@@ -226,8 +226,6 @@
         }, deidentificationFlags(config));
     }
 
-    var MISSING_NIP_REASON = 'The file carries no patient identifier (NIP): its dates cannot be shifted '
-        + 'and it cannot be checked against the record.';
 
     /**
      * Sort inspected files: the ones to deidentify are grouped by patient, and
@@ -281,6 +279,50 @@
 
     function plural(count, word) {
         return count + ' ' + word + (count === 1 ? '' : 's');
+    }
+
+    /**
+     * The patient of a batch none of whose files carries a NIP, as far as the
+     * files tell. Nothing proves they are one person: `identities` says how many
+     * names and birth dates they show.
+     */
+    function patientWithoutNip(entries) {
+        var identities = new Set();
+        var patient = { nip: '', rawNip: '', familyName: '', givenName: '', birthDate: '', entries: entries };
+        entries.forEach(function (entry) {
+            var inspection = entry.inspection || {};
+            identities.add([inspection.familyName, inspection.givenName, inspection.birthDate].join('^'));
+            patient.familyName = patient.familyName || String(inspection.familyName || '');
+            patient.givenName = patient.givenName || String(inspection.givenName || '');
+            patient.birthDate = patient.birthDate || String(inspection.birthDate || '');
+        });
+        patient.identities = identities.size;
+        return patient;
+    }
+
+    /** What the uploader must know of files without NIP, or null when there are none. */
+    function describeMissingNip(patient, count) {
+        if (!count) {
+            return null;
+        }
+        if (patient && patient.nip) {
+            return {
+                level: 'danger',
+                title: 'No PatientID on ' + plural(count, 'file'),
+                text: 'They will be sent as files of the patient above, with the same dates offset. '
+                    + 'Check that they are. If you upload anyway, the alert is kept in the project log and on this field.'
+            };
+        }
+        var names = patient && patient.identities > 1
+            ? ' They show ' + patient.identities + ' different identities.'
+            : '';
+        return {
+            level: 'danger',
+            title: 'No PatientID',
+            text: 'These files carry no patient identifier, so nothing ties them to a patient.' + names
+                + " Their dates are offset for this record alone: intervals with another patient's uploads are meaningless. "
+                + 'If you upload anyway, the alert is kept in the project log and on this field.'
+        };
     }
 
     /**
@@ -374,6 +416,8 @@
         var patient = options.patient;
         var summary = options.summary;
         var check = describePatientCheck(options.checkStatus, options.existingUploads);
+        var missingNip = describeMissingNip(patient, options.withoutNipCount);
+        var mismatch = options.checkStatus === 'mismatch';
         var content = summary.series.map(function (entry) {
             return {
                 type: 'DICOM',
@@ -407,7 +451,7 @@
                 { label: 'Last name', value: patient.familyName || '(not given)' },
                 { label: 'First name', value: patient.givenName || '(not given)' },
                 { label: 'Date of birth', value: patient.birthDate || '(not given)' },
-                { label: 'NIP', value: patient.rawNip || patient.nip }
+                { label: 'NIP', value: patient.rawNip || patient.nip || '(empty)' }
             ] : null,
             content: content,
             notes: notes,
@@ -417,8 +461,9 @@
             }),
             setAsideOmitted: Math.max(0, setAside.length - REVIEW_SET_ASIDE_LIMIT),
             check: check,
-            mismatch: options.checkStatus === 'mismatch',
-            confirmLabel: options.checkStatus === 'mismatch' ? 'Upload anyway' : 'Upload'
+            missingNip: missingNip,
+            mismatch: mismatch,
+            confirmLabel: mismatch || missingNip ? 'Upload anyway' : 'Upload'
         };
     }
 
@@ -426,9 +471,8 @@
      * One upload, one patient: a mixed batch is refused as a whole. This message
      * is stored in the REDCap field, so it must name nobody.
      */
-    function buildMultiplePatientsError(patients) {
-        return 'These files belong to ' + patients.length
-            + ' different patients. Upload one patient at a time. Nothing was uploaded.';
+    function buildMultiplePatientsError() {
+        return 'These files belong to different patients. Upload one patient at a time. Nothing was uploaded.';
     }
 
     /**
@@ -728,7 +772,7 @@
         describePatientCheck: describePatientCheck,
         buildTransferReview: buildTransferReview,
         buildMultiplePatientsError: buildMultiplePatientsError,
-        MISSING_NIP_REASON: MISSING_NIP_REASON,
+        patientWithoutNip: patientWithoutNip,
         isSkipError: isSkipError,
         isNonJsonResponseError: isNonJsonResponseError,
         retryAfterCacheRebuild: retryAfterCacheRebuild,

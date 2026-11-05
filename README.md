@@ -75,7 +75,7 @@ To deploy a working copy into a local REDCap, symlink `src/` into
 `redcap/modules/` under a versioned name:
 
 ```bash
-ln -s "$PWD/src" /path/to/redcap/modules/girder_uploader_v2.0.2
+ln -s "$PWD/src" /path/to/redcap/modules/girder_uploader_v2.0.3
 ```
 
 ## Tests
@@ -207,8 +207,8 @@ deidentified the old way.
 
 **What changes for users:**
 
-- A file without a NIP is now refused, where 1.x accepted it, and so are a DICOM
-  file wrapping a document and a Secondary Capture.
+- A file without a NIP raises an alert the uploader has to confirm, and a DICOM file
+  wrapping a document or a Secondary Capture is refused.
 - A record renamed after its upload no longer matches its Girder folder: the field
   keeps showing what it stored, but it can neither refresh nor delete that upload.
   The same goes for a project moved to another root collection.
@@ -230,9 +230,11 @@ deidentified the old way.
    noise (`.DS_Store`, dotfiles, `~*`) and nested archives, and sorts the batch
    by path. Batches are capped at 9999 files.
 3. The worker reads who each file belongs to and what it is (for DICOM, the
-   header only). Files that will be deidentified need a NIP: one without is set
-   aside, and a batch spanning several patients is refused as a whole. Then, in
-   order:
+   header only). A batch spanning several patients is refused as a whole. A file
+   without a NIP is not refused: the review window shows `(empty)` with an alert,
+   and the uploader can confirm it. In a patient's batch it goes with that patient.
+   In a batch without any NIP, the pseudonym is computed on the record instead, so
+   dates get an offset of the record's own. Then, in order:
    1. the browser computes the patient's pseudonym with REDCap, which checks
       that Girder answers and compares the two-character signature with the
       record's earlier uploads, storing nothing (when the project's
@@ -252,7 +254,7 @@ deidentified the old way.
 
    3. the uploader confirms or cancels. Cancelling leaves no trace: the field
       and the form stay as they were. A mismatch can be confirmed with **Upload
-      anyway**: the record keeps its signature, and the alert goes to the
+      anyway**: the upload keeps its own signature, and the alert goes to the
       project's Logging page, the module's log, and the field, where it stays
       visible;
    4. only then is the signature stored, on the record's first upload.
@@ -309,7 +311,7 @@ module writes:
 - `PatientAge` ← the age at the study, computed on the real dates: years
   (`069Y`), months under two years (`018M`), weeks under two months (`006W`)
 - `DeidentificationMethod` ← `IHU LIRYC REDCAP PLUGIN v{release}`, e.g.
-  `IHU LIRYC REDCAP PLUGIN v2.0.2`, so a file says which rules it went through;
+  `IHU LIRYC REDCAP PLUGIN v2.0.3`, so a file says which rules it went through;
   `PatientIdentityRemoved` ← `YES`
 - `LongitudinalTemporalInformationModified` ← `MODIFIED`
 

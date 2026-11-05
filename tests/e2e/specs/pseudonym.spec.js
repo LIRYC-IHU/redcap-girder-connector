@@ -19,6 +19,7 @@ function freshRecord() {
 const FINGERPRINT = /^[0-9a-f]{2}$/;
 const OVERRIDE_LOG = '[PSEUDONYM] fingerprint mismatch confirmed by the uploader';
 const PROJECT_ALERT = 'Girder Uploader: patient signature mismatch confirmed';
+const MISSING_NIP_ALERT = 'Girder Uploader: upload without PatientID confirmed';
 
 /**
  * Upload fixtures to a record through its form, answer the review window if one opens,
@@ -70,21 +71,52 @@ test.describe('patient pseudonym', () => {
         module_.setDailyLimit(null);
     });
 
-    test('1. a file without NIP is refused, the patient\'s files go through', async ({ page }) => {
+    test('1. a file without NIP in a patient\'s batch goes with that patient, after an alert', async ({ page }) => {
         const recordId = freshRecord();
-        const { metadata } = await upload(page, recordId, ['noid_20240115.dcm', 'p1000001_20240115.dcm']);
+        const alertsBefore = module_.countProjectLogs(MISSING_NIP_ALERT);
+        const { metadata, review } = await upload(page, recordId, ['noid_20240115.dcm', 'p1000001_20240115.dcm']);
 
+        expect(review).toMatch(/No PatientID on 1 file/);
+        expect(review).toMatch(/Upload anyway/);
         expectCompleted(metadata);
-        expect(await girder.listRecordFiles(recordId)).toHaveLength(1);
-        expect(metadata.rejectedFiles.map((entry) => entry.name)).toEqual(['noid_20240115.dcm']);
-        expect(metadata.rejectedFiles[0].reason).toMatch(/no patient identifier \(NIP\)/);
+        expect(metadata.rejectedFiles).toEqual([]);
+        expect(metadata.patientAlert).toMatchObject({ type: 'missing-nip', withoutNip: 1 });
+        expect(module_.countProjectLogs(MISSING_NIP_ALERT)).toBe(alertsBefore + 1);
+
+        // Both on the patient's calendar.
+        const dates = await datesInGirder(recordId);
+        expect(dates).toHaveLength(2);
+        expect(dates[0]).toBe(dates[1]);
     });
 
-    test('1b. a batch whose files all lack a NIP uploads nothing', async ({ page }) => {
-        const recordId = freshRecord();
-        const { metadata } = await upload(page, recordId, ['noid_20240115.dcm', 'emptyid_20240115.dcm']);
+    test('1b. a batch without any NIP is shown as such and can be forced', async ({ page }) => {
+        const [first, second] = [freshRecord(), freshRecord()];
+        const { metadata, review } = await upload(page, first, ['noid_20240115.dcm', 'emptyid_20240115.dcm']);
 
-        expectFailed(metadata, /NIP/);
+        expect(review).toMatch(/\(empty\)/);
+        expect(review).toMatch(/No PatientID/);
+        expect(review).toMatch(/2 different identities/);
+        expectCompleted(metadata);
+        expect(await girder.listRecordFiles(first)).toHaveLength(2);
+        expect(metadata.patientAlert).toMatchObject({ withoutNip: 2 });
+        expect(module_.storedFingerprint(first)).toMatch(FINGERPRINT);
+
+        // Dates are shifted, by an offset of the record's own.
+        await upload(page, second, ['noid_20240115.dcm']);
+        const [a, b] = [await datesInGirder(first), await datesInGirder(second)];
+        expect(daysShiftedBack('20240115', a[0])).toBeGreaterThanOrEqual(18262);
+        expect(a[0], 'one real date must not give all the others away').not.toBe(b[0]);
+
+        await redcap.openRecordForm(page, first, { create: false });
+        await expect(redcap.widget(page).locator('.girder-file-alert')).toContainText('No PatientID');
+    });
+
+    test('1c. cancelling a batch without NIP sends nothing', async ({ page }) => {
+        const recordId = freshRecord();
+        const { metadata, review } = await upload(page, recordId, ['noid_20240115.dcm'], { accept: false });
+
+        expect(review).toMatch(/No PatientID/);
+        expect(metadata).toBeNull();
         expect(await girder.listRecordFiles(recordId)).toHaveLength(0);
         expect(module_.storedFingerprint(recordId)).toBeNull();
     });
@@ -161,7 +193,7 @@ test.describe('patient pseudonym', () => {
         expect(review).toMatch(/Upload anyway/);
         expectCompleted(metadata);
         expect(await girder.listRecordFiles(recordId)).toHaveLength(2);
-        expect(module_.storedFingerprint(recordId), 'the record keeps its signature').toBe(fingerprint);
+        expect(module_.storedFingerprint(recordId), 'one for each upload').toMatch(new RegExp(`^${fingerprint},[0-9a-f]{2}$`));
 
         // The alert: in the module's log, the project's, and on the field.
         expect(module_.countLogs(OVERRIDE_LOG)).toBe(overridesBefore + 1);
@@ -175,6 +207,30 @@ test.describe('patient pseudonym', () => {
         await expect(redcap.widget(page, followUp).locator('.girder-upload-status')).toContainText('Girder metadata refreshed');
         await expect(alert).toContainText('Patient signature mismatch');
         await expect(redcap.widget(page).locator('.girder-file-alert'), 'the first upload raised none').toHaveCount(0);
+    });
+
+    test('4e. X, Y forced, X deleted, Y again: no new alert', async ({ page }) => {
+        test.skip(!module_.compose(['ps', '-q', 'worker']).trim(), 'deleting needs ./run.sh up --worker');
+        const recordId = freshRecord();
+        expectCompleted((await upload(page, recordId, ['p1000001_20240115.dcm'])).metadata);
+        expectCompleted((await upload(page, recordId, ['p1000002_20240115.dcm'], { followUp: true })).metadata);
+        const [first, second] = module_.storedFingerprint(recordId).split(',');
+        const overridesBefore = module_.countLogs(OVERRIDE_LOG);
+
+        redcap.trackDialogs(page);
+        await redcap.openRecordForm(page, recordId, { create: false });
+        await redcap.widget(page).locator('.girder-delete-button').click();
+        await expect(redcap.widget(page).locator('.girder-upload-status')).toContainText('Uploaded contents deleted', { timeout: 60_000 });
+        page.removeAllListeners('dialog');
+
+        expect(module_.storedFingerprint(recordId), 'the signature went with its upload').toBe(second);
+        expect(second).not.toBe(first);
+
+        const { metadata, review } = await upload(page, recordId, ['p1000002_20240215.dcm']);
+        expectCompleted(metadata);
+        expect(review).not.toMatch(/mismatch/i);
+        expect(review).toMatch(/Same patient signature/);
+        expect(module_.countLogs(OVERRIDE_LOG)).toBe(overridesBefore);
     });
 
     test('4c. what a file says is shown as text, never run', async ({ page }) => {
@@ -221,7 +277,7 @@ test.describe('patient pseudonym', () => {
         const recordId = freshRecord();
         const { metadata } = await upload(page, recordId, ['p1000001_20240115.dcm', 'p1000002_20240115.dcm']);
 
-        expectFailed(metadata, /2 different patients/);
+        expectFailed(metadata, /^These files belong to different patients\./);
         // Refused or not, no identity may reach REDCap.
         const fixtures = fixtureManifest();
         for (const name of ['p1000001_20240115.dcm', 'p1000002_20240115.dcm']) {
