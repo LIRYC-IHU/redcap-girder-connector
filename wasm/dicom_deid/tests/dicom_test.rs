@@ -150,6 +150,131 @@ fn refuses_a_document_wrapped_inside_a_sequence() {
 }
 
 #[test]
+fn free_text_without_a_rule_is_emptied_wherever_it_sits() {
+    let output = deidentify(
+        &dicom_fixture_edited(|object| {
+            put(object, tags::CONTENT_CREATOR_NAME, VR::PN, "ZZCREATOR^JANE");
+            put(object, tags::REASON_FOR_VISIT, VR::UT, "ZZREASON Mme Doe");
+            put(
+                object,
+                tags::PERSON_TELECOM_INFORMATION,
+                VR::LT,
+                "ZZPHONE 0556",
+            );
+            let mut item = InMemDicomObject::new_empty();
+            put(&mut item, tags::TEXT_VALUE, VR::UT, "ZZNESTED Mme Doe");
+            object.put(DataElement::new(
+                tags::CONTENT_SEQUENCE,
+                VR::SQ,
+                DataSetSequence::from(vec![item]),
+            ));
+        }),
+        "REC-42",
+        "MY PROJECT^REC-42",
+    )
+    .unwrap();
+
+    for marker in ["ZZCREATOR", "ZZREASON", "ZZPHONE", "ZZNESTED"] {
+        assert!(!contains(&output, marker), "{marker} survived");
+    }
+}
+
+#[test]
+fn what_the_data_needs_stays() {
+    let output = deidentify(
+        &dicom_fixture_edited(|object| {
+            put(object, tags::SERIES_DESCRIPTION, VR::LO, "Coronarography");
+        }),
+        "REC-42",
+        "MY PROJECT^REC-42",
+    )
+    .unwrap();
+
+    assert_eq!(
+        read_dicom_string(&output, tags::SERIES_DESCRIPTION).as_deref(),
+        Some("Coronarography")
+    );
+    assert_eq!(
+        read_dicom_string(&output, tags::PATIENT_NAME).as_deref(),
+        Some("MY PROJECT^REC-42"),
+        "the name the module writes is not free text"
+    );
+}
+
+#[test]
+fn the_file_meta_group_does_not_tell_who_sent_the_file() {
+    let source = dicom_fixture_with_identifying_meta();
+    for marker in ["ZZSOURCE", "ZZSENDER", "ZZRECEIVER", "ZZPRIVATE"] {
+        assert!(
+            contains(&source, marker),
+            "{marker} missing from the fixture"
+        );
+    }
+
+    let output = deidentify(&source, "REC-42", "MY PROJECT^REC-42").unwrap();
+
+    for marker in ["ZZSOURCE", "ZZSENDER", "ZZRECEIVER", "ZZPRIVATE"] {
+        assert!(!contains(&output, marker), "{marker} survived");
+    }
+    assert!(dicom::validate(&output).is_ok());
+}
+
+#[test]
+fn a_date_range_is_removed_rather_than_half_shifted() {
+    let output = deidentify(
+        &dicom_fixture_edited(|object| {
+            put(
+                object,
+                tags::DATE_OF_LAST_CALIBRATION,
+                VR::DA,
+                "20190101-20190201",
+            );
+        }),
+        "REC-42",
+        "MY PROJECT^REC-42",
+    )
+    .unwrap();
+
+    assert_eq!(
+        read_dicom_string(&output, tags::DATE_OF_LAST_CALIBRATION),
+        None
+    );
+    assert!(
+        !contains(&output, "20190201"),
+        "the end of the range leaked"
+    );
+}
+
+#[test]
+fn a_derived_image_is_left_out() {
+    let error = deidentify(
+        &dicom_fixture_edited(|object| {
+            put(object, tags::IMAGE_TYPE, VR::CS, "DERIVED\\SECONDARY\\MPR");
+        }),
+        "REC-42",
+        "MY PROJECT^REC-42",
+    )
+    .unwrap_err();
+
+    assert_eq!(error, dicom::DERIVED_IMAGE_SKIP_REASON);
+    assert!(error.starts_with("SKIP:"), "out of scope, not an error");
+}
+
+#[test]
+fn an_original_image_goes_through() {
+    let input = dicom_fixture_edited(|object| {
+        put(
+            object,
+            tags::IMAGE_TYPE,
+            VR::CS,
+            "ORIGINAL\\PRIMARY\\SINGLE PLANE",
+        );
+    });
+
+    assert!(deidentify(&input, "REC-42", "MY PROJECT^REC-42").is_ok());
+}
+
+#[test]
 fn an_ordinary_image_is_not_refused() {
     assert_eq!(dicom::identity(&dicom_fixture()).unwrap().refusal, None);
 }

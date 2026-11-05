@@ -231,7 +231,7 @@ pub fn classify(input_bytes: &[u8], file_name: &str) -> XmlOutcome {
     }
 
     XmlOutcome::Unsupported(format!(
-        "{file_name} is {}, not an HL7 Annotated ECG. Only the HL7 aECG format \
+        "This file is {}, not an HL7 Annotated ECG. Only the HL7 aECG format \
          (<{AECG_ROOT} xmlns=\"{AECG_NAMESPACE}\">) can be deidentified; remove the file from \
          the upload or ask for its format to be supported.",
         describe_dialect(local_name, namespace)
@@ -567,6 +567,8 @@ impl Rewriter {
             // A date on a kept path moves with the patient's offset.
             Policy::Keep => match dates::shift(trimmed, self.date_offset) {
                 Some(shifted) => shifted,
+                // A real date that cannot be moved, such as a range, must not stay.
+                None if dates::begins_with_date(trimmed) => String::new(),
                 None => original.to_string(),
             },
         })
@@ -691,18 +693,12 @@ fn rewrite(
                     .map_err(|err| format!("SKIP: XML end-element write failed: {err}"))?;
                 path.pop();
             }
-            // Comments and CDATA are free text with no schema behind them.
-            Ok(Event::Comment(_)) | Ok(Event::CData(_)) => {}
-            Ok(Event::DocType(e)) => {
-                writer
-                    .write_event(Event::DocType(e))
-                    .map_err(|err| format!("SKIP: XML doctype write failed: {err}"))?;
-            }
-            Ok(Event::PI(e)) => {
-                writer.write_event(Event::PI(e)).map_err(|err| {
-                    format!("SKIP: XML processing-instruction write failed: {err}")
-                })?;
-            }
+            // Free text with no schema behind it. A DOCTYPE can also declare entities
+            // for whoever parses the output next.
+            Ok(Event::Comment(_))
+            | Ok(Event::CData(_))
+            | Ok(Event::DocType(_))
+            | Ok(Event::PI(_)) => {}
             Ok(Event::Eof) => break,
             Err(err) => return Err(format!("SKIP: XML serialization failed: {err}")),
         }

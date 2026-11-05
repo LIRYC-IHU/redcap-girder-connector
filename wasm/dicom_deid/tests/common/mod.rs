@@ -95,6 +95,28 @@ pub fn dicom_fixture_with_meta_sop_class(uid: &str) -> Vec<u8> {
     bytes
 }
 
+/// The standard fixture, with a file meta group telling who sent it.
+pub fn dicom_fixture_with_identifying_meta() -> Vec<u8> {
+    let meta_builder = FileMetaTableBuilder::new()
+        .media_storage_sop_class_uid(X_RAY_ANGIOGRAPHIC_STORAGE)
+        .media_storage_sop_instance_uid(DICOM_SOP_UID)
+        .transfer_syntax(EXPLICIT_VR_LITTLE_ENDIAN)
+        .implementation_class_uid("1.2.826.0.1.3680043.10.543.1")
+        .source_application_entity_title("ZZSOURCE")
+        .sending_application_entity_title("ZZSENDER")
+        .receiving_application_entity_title("ZZRECEIVER")
+        .private_information_creator_uid("1.2.3.4")
+        .private_information(b"ZZPRIVATE".to_vec());
+    let object = dicom_dataset_with(DICOM_STUDY_DATE, Some(DICOM_BIRTH_DATE));
+    let file_object = object.with_meta(meta_builder).expect("object with meta");
+
+    let mut bytes = Vec::new();
+    file_object
+        .write_all(&mut bytes)
+        .expect("serialize fixture");
+    bytes
+}
+
 fn part10_bytes(object: InMemDicomObject) -> Vec<u8> {
     let meta_builder = FileMetaTableBuilder::new()
         .media_storage_sop_class_uid(X_RAY_ANGIOGRAPHIC_STORAGE)

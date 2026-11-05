@@ -114,9 +114,32 @@ return function ($t): void {
         $key = $module->getSystemSetting('pseudonym-redcap-key');
 
         $t->assertTrue(Voprf::isValidKey((string) $key));
-        $t->assertSame(Voprf::publicKey((string) $key), $first['publicKey']);
+        $t->assertSame(Voprf::publicKey(Voprf::deriveProjectKey((string) $key, 'redcap:12')), $first['publicKey']);
         evaluate($module);
         $t->assertSame($key, $module->getSystemSetting('pseudonym-redcap-key'), 'the key must never be regenerated');
+    });
+
+    $t->test('the key evaluated with is the project domain\'s, whatever the browser says', function ($t): void {
+        $module = pseudonymTestModule(['pseudonym-domain' => 'redcap:12'], ['pseudonym-redcap-key' => Voprf::generateKey()]);
+        $other = pseudonymTestModule(['pseudonym-domain' => 'redcap:13'], $module->systemSettings);
+        $blinded = protocolVectors()['blindedElement'] ?? null;
+
+        $mine = evaluate($module, 'REC-1', $blinded);
+        $theirs = evaluate($other, 'REC-1', $blinded);
+        $master = Voprf::publicKey($module->getSystemSetting('pseudonym-redcap-key'));
+
+        $t->assertTrue($mine['publicKey'] !== $theirs['publicKey']);
+        $t->assertTrue($mine['evaluatedElement'] !== $theirs['evaluatedElement']);
+        $t->assertTrue($mine['publicKey'] !== $master, 'the module key itself is never used');
+    });
+
+    $t->test('only an administrator may set the domain', function ($t): void {
+        $config = json_decode(file_get_contents(__DIR__ . '/../../src/config.json'), true);
+        $setting = array_values(array_filter($config['project-settings'], function ($entry) {
+            return $entry['key'] === 'pseudonym-domain';
+        }))[0];
+
+        $t->assertTrue($setting['super-users-only']);
     });
 
     $t->test('the same blinded element always evaluates the same', function ($t): void {

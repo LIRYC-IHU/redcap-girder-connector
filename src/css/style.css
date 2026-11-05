@@ -288,3 +288,10 @@
 .girder-transfer-review .ui-dialog-buttonpane .girder-review-confirm-danger {
     color: #a3211d;
 }
+
+.girder-review-set-aside {
+    margin: 4px 0 0;
+    padding-left: 18px;
+    color: #555;
+    overflow-wrap: anywhere;
+}

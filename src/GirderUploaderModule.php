@@ -123,6 +123,7 @@ class GirderUploaderModule extends AbstractExternalModule
             'instanceId' => $repeat_instance,
             'dagName' => $this->getDagName($group_id),
             'fields' => array_values($fields),
+            'recordListCacheUrl' => $this->getRecordListCacheUrl($project_id),
             'permissions' => [
                 'canModify' => $this->userCanModifyInstrument($instrument),
                 'recordSaved' => $this->isUsableRecordId($record),
@@ -733,7 +734,8 @@ class GirderUploaderModule extends AbstractExternalModule
         }
 
         try {
-            $evaluation = Voprf::blindEvaluate($key, $blinded);
+            $projectKey = Voprf::deriveProjectKey($key, $this->pseudonymDomain($projectId));
+            $evaluation = Voprf::blindEvaluate($projectKey, $blinded);
         } catch (\InvalidArgumentException $error) {
             return ['ok' => false, 'error' => 'Invalid pseudonym request: ' . $error->getMessage()];
         }
@@ -1229,6 +1231,21 @@ class GirderUploaderModule extends AbstractExternalModule
         }
 
         return $fields;
+    }
+
+    /**
+     * REDCap's record-list cache builder for the project. Until the cache is built, REDCap
+     * redirects the module's AJAX POSTs to this route and the widget gets HTML instead of
+     * JSON; the widget calls it, then retries. PLUGIN makes it exit once the cache is built
+     * instead of redirecting back to the referring page.
+     */
+    private function getRecordListCacheUrl($projectId)
+    {
+        return APP_PATH_WEBROOT . 'index.php?' . http_build_query([
+            'pid' => (int) $projectId,
+            'route' => 'DataEntryController:buildRecordListCache',
+            'PLUGIN' => 1,
+        ]);
     }
 
     private function getDagName($group_id)

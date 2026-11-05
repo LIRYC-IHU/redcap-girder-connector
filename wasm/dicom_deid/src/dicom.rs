@@ -238,6 +238,12 @@ pub const ENCAPSULATED_DOCUMENT_REASON: &str =
 pub const SECONDARY_CAPTURE_REASON: &str =
     "this DICOM file is a Secondary Capture, an image of a screen or a document whose content cannot be deidentified; it is not uploaded";
 
+/// The reason a derived image is left out, as reported to the browser. A `SKIP:`:
+/// like a DICOMDIR, it is out of scope rather than wrong, and an examination can
+/// hold hundreds of them.
+pub const DERIVED_IMAGE_SKIP_REASON: &str =
+    "SKIP: derived images (reformats, reconstructions) are not uploaded";
+
 /// Secondary Capture Image Storage. The four multi-frame classes extend it by
 /// one component, and the dot matters: `1.2.840.10008.5.1.4.1.1.77.1.1` is
 /// VL Endoscopic Image Storage.
@@ -264,6 +270,8 @@ fn refusal(object: &DefaultDicomObject) -> Option<&'static str> {
         Some(SECONDARY_CAPTURE_REASON)
     } else if wraps_document(object) {
         Some(ENCAPSULATED_DOCUMENT_REASON)
+    } else if read_string(object, tags::IMAGE_TYPE).is_some_and(|kind| kind.contains("DERIVED")) {
+        Some(DERIVED_IMAGE_SKIP_REASON)
     } else {
         None
     }
@@ -425,6 +433,17 @@ pub fn deidentify(
         VR::CS,
         PrimitiveValue::from("MODIFIED"),
     ));
+
+    // The anonymizer copies the file meta group: who sent the file, to whom, and
+    // whatever a vendor put in its private information.
+    anonymized.update_meta(|meta| {
+        meta.source_application_entity_title = None;
+        meta.sending_application_entity_title = None;
+        meta.receiving_application_entity_title = None;
+        meta.private_information_creator_uid = None;
+        meta.private_information = None;
+        meta.update_information_group_length();
+    });
 
     let mut out = Vec::new();
     anonymized
@@ -617,6 +636,12 @@ fn rewrite_elements(
                         Some(DataElement::new(tag, elem.vr(), PrimitiveValue::Empty)),
                     ));
                 }
+                Action::Keep | Action::None if holds_free_text(elem.vr()) => {
+                    edits.push((
+                        tag,
+                        Some(DataElement::new(tag, elem.vr(), PrimitiveValue::Empty)),
+                    ));
+                }
                 _ => {}
             },
         }
@@ -632,6 +657,14 @@ fn rewrite_elements(
             }
         }
     }
+}
+
+/// Person names and free text. The anonymizer keeps two hundred such elements it
+/// has no rule for, `ReasonForVisit`, `TextValue` and `ContentCreatorName` among
+/// them, so whatever has no rule is emptied. LO and SH are left out: they also
+/// hold what the data needs, such as `SeriesDescription`.
+fn holds_free_text(vr: VR) -> bool {
+    matches!(vr, VR::PN | VR::LT | VR::ST | VR::UT | VR::UC)
 }
 
 fn read_string(object: &DefaultDicomObject, tag: Tag) -> Option<String> {

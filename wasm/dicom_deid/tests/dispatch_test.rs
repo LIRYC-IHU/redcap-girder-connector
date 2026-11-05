@@ -160,7 +160,17 @@ fn a_dicom_file_is_not_mistaken_for_an_xml_ecg() {
 fn an_unsupported_xml_ecg_stops_the_upload() {
     // Not `SKIP:`: dropping the file silently would let a clinician believe the
     // ECG was uploaded, and passing it through would upload identified data.
-    let error = run(philips_fixture().as_bytes(), "ecg.xml", "REC-42", ALL).unwrap_err();
+    let error = run(
+        philips_fixture().as_bytes(),
+        "DOE John ecg.xml",
+        "REC-42",
+        ALL,
+    )
+    .unwrap_err();
+    assert!(
+        !error.contains("DOE"),
+        "this reason is stored in the REDCap field"
+    );
 
     assert!(!error.starts_with("SKIP:"), "got {error}");
     assert!(error.contains("Philips"), "got {error}");

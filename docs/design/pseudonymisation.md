@@ -1,6 +1,6 @@
 # Pseudonymisation des fichiers : signature du NIP, dates et identifiants
 
-Statut : **proposé** — à relire par le DPO et un relecteur compétent en cryptographie
+Statut : **relu par le DPO** — relecture par un cryptographe à prévoir
 avant mise en production. Référence : annexe sécurité des méthodologies de référence de la
 CNIL, version avril 2026 (notée MR-… ci-dessous).
 
@@ -207,6 +207,13 @@ MR-CNS-04. Ces valeurs sont donc traitées avant lui :
 | Administrateur Girder | les fichiers désidentifiés | rien : ni clé, ni signature, ni décalage |
 | Destinataire des données | les fichiers désidentifiés | rien |
 
+**Séparation des projets.** Le navigateur masque son entrée, donc REDCap ne peut pas
+vérifier le domaine qu'elle contient. La séparation repose sur une clé par projet :
+REDCap évalue avec `HMAC-SHA512(k, label ‖ domaine)` réduit à un scalaire, le domaine étant
+lu dans les réglages du projet et non reçu du navigateur. `pseudonym-domain` est réservé
+aux super-utilisateurs : un droit de conception sur un projet ne donne pas la clé d'un
+autre. Conserver ce réglage permet de migrer un projet sans changer ses pseudonymes.
+
 ## 5. Limites
 
 - **Le code client est servi par REDCap.** Un administrateur REDCap *malveillant* peut
@@ -226,6 +233,12 @@ MR-CNS-04. Ces valeurs sont donc traitées avant lui :
 - **Documents encapsulés** (PDF, CDA) : un fichier DICOM qui en contient est refusé et mis
   de côté avec son motif, car l'identité est dans le document, hors de portée. Les comptes
   rendus ne passent donc pas par ce module.
+- **Texte libre DICOM** : les éléments publics PN, LT, ST, UT et UC sans règle de
+  l'anonymiseur sont vidés, séquences comprises. LO et SH sont conservés, car ils portent
+  `SeriesDescription` et ce dont les données ont besoin : une saisie libre dans ces champs
+  passe donc, et leur contenu reste à contrôler en amont.
+- **Images dérivées** : un fichier dont `ImageType` contient `DERIVED` est retiré du lot, et
+  compté dans la fenêtre de revue. Il n'est pas traité comme une erreur.
 - **Secondary Capture** : les cinq classes sont refusées de la même façon. Une capture
   d'écran ou de document peut montrer l'identité dans ses pixels, que le module ne lit pas.
   Le refus ne porte que sur ces classes : le contrôle du texte incrusté dans les autres
@@ -248,7 +261,8 @@ MR-CNS-04. Ces valeurs sont donc traitées avant lui :
 Le guide d'implémentation HL7 aECG place l'identifiant du sujet dans `trialSubject/id`
 (« the traditional identifier » dans `extension`) ; `PatientID` n'en fait pas partie. Sur
 l'ECG réel de test (Mindray BeneHeart R12), ces deux champs portent **deux identifiants
-différents** : il reste à vérifier que `extension` est bien l'IPP.
+différents**. `extension` est retenu : c'est la position que le standard HL7 FDA aECG donne
+à l'IPP.
 
 ## 7. Composants
 

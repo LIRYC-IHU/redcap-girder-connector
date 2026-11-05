@@ -7,6 +7,44 @@ fn days(date: &str) -> i64 {
 }
 
 #[test]
+fn a_range_still_counts_as_holding_a_date() {
+    assert!(dates::begins_with_date("20190101-20190201"));
+    assert!(dates::begins_with_date("20190101"));
+    assert!(!dates::begins_with_date("12.5"));
+}
+
+#[test]
+fn only_a_time_of_day_may_trail_a_date() {
+    for value in [
+        "20240115",
+        "20240115143512",
+        "20240115143512.123456",
+        "20240115143512.000+0100",
+        "20240115143512-0500",
+        "20240115-0500",
+        "202401151435",
+        "2024-01-15",
+        "2024-01-15T14:35:12",
+        "2024-01-15T14:35:12.5Z",
+        "2024-01-15T14:35:12+01:00",
+        "2024-01-15 14:35",
+    ] {
+        assert!(dates::parse(value).is_some(), "{value}");
+    }
+
+    for value in [
+        "20190101-20190201",
+        "20190101120000-20190201120000",
+        "20190101-",
+        "20190101 born 19540212",
+        "2019-01-01/2019-02-01",
+        "20190101143512999",
+    ] {
+        assert!(dates::parse(value).is_none(), "{value}");
+    }
+}
+
+#[test]
 fn a_date_moves_by_exactly_the_offset() {
     for offset in [-18_262, -27_000, -36_524] {
         let shifted = dates::shift("20240115", offset).unwrap();

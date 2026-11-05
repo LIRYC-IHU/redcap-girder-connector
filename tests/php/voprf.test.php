@@ -13,6 +13,23 @@ require_once __DIR__ . '/../../src/Voprf.php';
 use ExternalModules\GirderUploaderModule\Voprf;
 
 return function ($t): void {
+    $t->test('voprf: a project key follows the specification', function ($t): void {
+        // Computed apart, with Python's hmac and the group order.
+        $key = '5ebcea5ee37023ccb9fc2d2019f9d7737be85591ae8652ffa9ef0f4d37063b0e';
+
+        $t->assertSame('86753b99d2747c251eac82caddf395df37f935b60a5c7e926659d9aa9c9e930d', Voprf::deriveProjectKey($key, 'redcap:12'));
+    });
+
+    $t->test('voprf: projects do not share a key', function ($t): void {
+        $key = Voprf::generateKey();
+        $project = Voprf::deriveProjectKey($key, 'redcap:12');
+
+        $t->assertTrue(Voprf::isValidKey($project));
+        $t->assertTrue($project !== $key);
+        $t->assertTrue($project !== Voprf::deriveProjectKey($key, 'redcap:13'));
+        $t->assertSame($project, Voprf::deriveProjectKey($key, 'redcap:12'));
+    });
+
     $vectorDir = __DIR__ . '/../../protocol/test-vectors';
     $rfc = json_decode((string) file_get_contents($vectorDir . '/rfc9497-ristretto255-sha512-voprf.json'), true, 512, JSON_THROW_ON_ERROR);
     $vectors = json_decode((string) file_get_contents($vectorDir . '/pseudonym.json'), true, 512, JSON_THROW_ON_ERROR);

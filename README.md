@@ -12,9 +12,10 @@ Supported formats:
 
 | Format | Detection | What is removed |
 | --- | --- | --- |
-| DICOM | `DICM` magic code, or a bare data set / file meta group without one | Patient identity, institution, private tags; UIDs rehashed; dates shifted |
+| DICOM | `DICM` magic code, or a bare data set / file meta group without one | Patient identity, institution, private tags, person names and free text, the sender in the file meta group; UIDs rehashed; dates shifted |
 | DICOM wrapping a document (PDF, CDA…) | `EncapsulatedDocument` element, sequences included | Not uploaded at all: the identity sits inside the document, out of reach. Set aside with its reason |
 | DICOM Secondary Capture | SOP class `1.2.840.10008.5.1.4.1.1.7` and its multi-frame `.7.1` to `.7.4` | Not uploaded at all: an image of a screen or a document can show anything. Set aside with its reason |
+| Derived DICOM image (reformat, reconstruction) | `DERIVED` in `ImageType` | Not uploaded at all. Left out of the batch like a DICOMDIR, and counted in the review window |
 | DICOMDIR | Media Storage Directory SOP class | Not uploaded at all — see below |
 | XML ECG (HL7 aECG only) | root element + namespace | Everything outside an allowlist; UIDs replaced, dates shifted |
 | Schiller Holter | file magic number (byte 5 may be `0x00` or `0x01`) | Patient block, voice annotations, device UUID |
@@ -24,8 +25,8 @@ dialect other than HL7 aECG is **refused** — see below. Either way the rest of
 the batch is uploaded, and what was left behind is reported.
 
 Every deidentified file is tied to its patient by a **pseudonym** computed from
-the file's NIP with a key held by REDCap: the NIP never leaves the browser, and
-the key never leaves the server. It checks that an upload is consistent with the
+the file's NIP with a key held by REDCap, one per project: the NIP never leaves the
+browser, and the key never leaves the server. It checks that an upload is consistent with the
 record's earlier ones, sets the shift applied to every date, and keys the
 rewriting of DICOM UIDs. Nothing is sent before the uploader has reviewed the
 patient, the content and that check in a REDCap window. The design, the threat model and its limits are in
@@ -74,7 +75,7 @@ To deploy a working copy into a local REDCap, symlink `src/` into
 `redcap/modules/` under a versioned name:
 
 ```bash
-ln -s "$PWD/src" /path/to/redcap/modules/girder_uploader_v2.0.0
+ln -s "$PWD/src" /path/to/redcap/modules/girder_uploader_v2.0.1
 ```
 
 ## Tests
@@ -149,7 +150,7 @@ the project settings:
 | `deidentify-xml-ecg` | Deidentify XML ECG files (on by default) |
 | `deidentify-schiller-holter` | Deidentify Schiller Holter files (on by default) |
 | `pseudonym-fingerprint-check` | Warn before an upload whose patient differs from the record's earlier uploads; the uploader can still confirm it, which is logged (on by default) |
-| `pseudonym-domain` | Separates this project's pseudonyms from other projects'; `redcap:<project id>` when empty |
+| `pseudonym-domain` | Gives this project its own pseudonym key; `redcap:<project id>` when empty. Super users only |
 | `preserve-upload-folder-architecture` | Keep the user's folder names; off by default, since they can carry the patient's identity |
 
 In the Control Center (system settings):
@@ -308,7 +309,7 @@ module writes:
 - `PatientAge` ← the age at the study, computed on the real dates: years
   (`069Y`), months under two years (`018M`), weeks under two months (`006W`)
 - `DeidentificationMethod` ← `IHU LIRYC REDCAP PLUGIN v{release}`, e.g.
-  `IHU LIRYC REDCAP PLUGIN v2.0.0`, so a file says which rules it went through;
+  `IHU LIRYC REDCAP PLUGIN v2.0.1`, so a file says which rules it went through;
   `PatientIdentityRemoved` ← `YES`
 - `LongitudinalTemporalInformationModified` ← `MODIFIED`
 

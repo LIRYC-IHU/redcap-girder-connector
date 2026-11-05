@@ -104,8 +104,8 @@ test.describe('security', () => {
         const recordId = `sx${RUN}f`;
         redcap.trackDialogs(page);
         await redcap.openRecordForm(page, recordId);
-        await redcap.uploadFiles(page, ['report_20240115.dcm', 'capture_20240115.dcm', 'p1000001_20240115.dcm'].map(fixturePath));
-        await expect(redcap.review(page)).toContainText('2 files set aside', { timeout: 60_000 });
+        await redcap.uploadFiles(page, ['report_20240115.dcm', 'capture_20240115.dcm', 'derived_20240115.dcm', 'p1000001_20240115.dcm'].map(fixturePath));
+        await expect(redcap.review(page)).toContainText('3 files set aside', { timeout: 60_000 });
         await redcap.answerReview(page);
         const metadata = await redcap.waitForUploadOutcome(recordId);
         page.removeAllListeners('dialog');
@@ -114,9 +114,36 @@ test.describe('security', () => {
         const reasons = metadata.rejectedFiles.map((entry) => entry.reason).join();
         expect(reasons).toMatch(/wraps a document/);
         expect(reasons).toMatch(/Secondary Capture/);
+        expect(metadata.rejectedFiles, 'a derived image is left out, not an error').toHaveLength(2);
         const files = await girder.listRecordFiles(recordId);
         expect(files).toHaveLength(1);
         expect((await girder.downloadFile(files[0].file._id)).toString('latin1')).not.toContain('%PDF');
+    });
+
+    test('a rejected file keeps its name out of the field, unless the project keeps names', async ({ page }) => {
+        const pid = Number(loadState().redcap.projectId);
+        const upload = async (recordId) => {
+            redcap.trackDialogs(page);
+            await redcap.openRecordForm(page, recordId);
+            await redcap.uploadFiles(page, ['report_20240115.dcm', 'p1000001_20240115.dcm'].map(fixturePath));
+            const review = redcap.review(page);
+            await expect(review).toContainText('report_20240115.dcm', { timeout: 60_000 });
+            await redcap.answerReview(page);
+            const metadata = await redcap.waitForUploadOutcome(recordId);
+            page.removeAllListeners('dialog');
+            return metadata;
+        };
+
+        module_.setSetting(pid, 'preserve-upload-folder-architecture', 'boolean', 'false');
+        try {
+            const metadata = await upload(`sx${RUN}g`);
+            expect(metadata.rejectedFiles[0].name).toBe('File 1 (.dcm)');
+            expect(JSON.stringify(metadata)).not.toContain('report_20240115');
+            expect(JSON.stringify(metadata)).not.toContain('p1000001');
+        } finally {
+            module_.setSetting(pid, 'preserve-upload-folder-architecture', 'boolean', 'true');
+        }
+        expect((await upload(`sx${RUN}h`)).rejectedFiles[0].name).toBe('report_20240115.dcm');
     });
 
     test('free text in the project title or a setting cannot run in the form', async ({ page }) => {
