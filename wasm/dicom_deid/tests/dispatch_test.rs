@@ -243,6 +243,20 @@ fn inspection_normalizes_the_nip_the_way_the_pseudonym_does() {
 
 #[test]
 fn inspection_says_when_a_format_will_not_be_deidentified() {
+    // A file that cannot be deidentified is an opt-out's business too.
+    let capture = dicom_fixture_edited(|object| {
+        object.put(dicom_core::DataElement::new(
+            dicom_dictionary_std::tags::SOP_CLASS_UID,
+            dicom_core::VR::UI,
+            dicom_core::PrimitiveValue::from("1.2.840.10008.5.1.4.1.1.7"),
+        ));
+    });
+    assert_eq!(
+        inspect_bytes(&capture, "capture.dcm", true, true, true).unwrap_err(),
+        dicom_deid::dicom::SECONDARY_CAPTURE_REASON
+    );
+    assert!(inspect_bytes(&capture, "capture.dcm", false, true, true).is_ok());
+
     let inspection = inspect_bytes(&dicom_fixture(), "image.dcm", false, true, true).unwrap();
 
     assert!(

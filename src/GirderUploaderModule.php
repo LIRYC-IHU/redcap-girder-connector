@@ -228,7 +228,7 @@ class GirderUploaderModule extends AbstractExternalModule
         }
 
         if ($action === 'refresh-upload-metadata') {
-            return $this->handleRefreshUploadMetadata($payload, (int) $project_id, (string) $instrument);
+            return $this->handleRefreshUploadMetadata($payload, (int) $project_id, (string) $instrument, (string) $record);
         }
 
         if ($action === 'delete-upload-contents') {
@@ -572,7 +572,7 @@ class GirderUploaderModule extends AbstractExternalModule
         }
     }
 
-    private function handleRefreshUploadMetadata($payload, $projectId, $instrument)
+    private function handleRefreshUploadMetadata($payload, $projectId, $instrument, $record = '')
     {
         $data = is_array($payload) ? $payload : [];
         $fieldName = isset($data['fieldName']) ? (string) $data['fieldName'] : '';
@@ -603,6 +603,17 @@ class GirderUploaderModule extends AbstractExternalModule
         }
 
         try {
+            $location = $this->locateUpload($settings, $folderId, $record, $fieldName);
+            if ($location === null) {
+                return [
+                    'ok' => true,
+                    'missing' => true,
+                ];
+            }
+            if ($location === false) {
+                return $this->uploadOutOfScope($record, $fieldName);
+            }
+
             $metadata = $this->buildMetadataSnapshotFromFolder($settings, $folderId, $uploadedAt);
             if ($metadata === null) {
                 return [
@@ -660,11 +671,13 @@ class GirderUploaderModule extends AbstractExternalModule
         }
 
         try {
-            try {
-                $recordFolderId = $this->recordFolderIdOf($settings, $folderId);
-            } catch (\Throwable $error) {
+            $recordFolderId = $this->locateUpload($settings, $folderId, $record, $fieldName);
+            if ($recordFolderId === false) {
+                return $this->uploadOutOfScope($record, $fieldName);
+            }
+            if ($recordFolderId === null) {
                 // Already gone: deletion stays idempotent, the fingerprint stays.
-                $recordFolderId = '';
+                return ['ok' => true, 'deleted' => false, 'fingerprintCleared' => false];
             }
             $deleted = $this->deleteFolderTree($settings, $folderId);
             $fingerprintCleared = $this->clearFingerprintIfRecordIsEmpty($settings, (string) $record, $recordFolderId, $folderId);
@@ -909,13 +922,57 @@ class GirderUploaderModule extends AbstractExternalModule
     }
 
     /**
-     * The record folder above a field folder, by position: collection, DAG,
-     * record. Names cannot tell, a record may well be called `123`.
+     * Check a folder id sent by the browser before acting on it with the
+     * project's Girder key: it must be this field's folder, on this record, in
+     * this project's collection.
+     *
+     * Returns the record folder's id, null when the folder no longer exists, and
+     * false when it is anything else. The path is read by position (collection,
+     * DAG, record, then the event): a record may well be called `123`.
      */
-    protected function recordFolderIdOf($settings, $folderId)
+    private function locateUpload($settings, $folderId, $record, $fieldName)
     {
-        $path = $this->girderRequestJson($settings, 'GET', '/folder/' . rawurlencode((string) $folderId) . '/rootpath', null);
-        return is_array($path) && isset($path[2]['object']['_id']) ? (string) $path[2]['object']['_id'] : '';
+        try {
+            [$folder, $path] = $this->folderWithPath($settings, $folderId);
+        } catch (\Throwable $error) {
+            if ($this->isGirderNotFoundException($error)
+                || stripos($error->getMessage(), 'invalid folder id') !== false) {
+                return null;
+            }
+            throw $error;
+        }
+
+        $depth = count($path);
+        $underEvent = $depth === 4 && $this->isEventFolderName($path[3]['object']['name'] ?? '');
+        $inPlace = ($depth === 3 || $underEvent)
+            && (string) ($path[0]['object']['_id'] ?? '') === (string) $settings['rootCollectionId']
+            && (string) ($path[2]['object']['name'] ?? '') === $this->sanitizePathPart($record, 'UNASSIGNED_RECORD')
+            && $this->isFieldFolderName($folder['name'] ?? '', $fieldName);
+
+        return $inPlace ? (string) $path[2]['object']['_id'] : false;
+    }
+
+    /** A folder and its ancestors, from the collection down. Throws when Girder has no such folder. */
+    protected function folderWithPath($settings, $folderId)
+    {
+        $id = rawurlencode((string) $folderId);
+        return [
+            $this->girderRequestJson($settings, 'GET', '/folder/' . $id, null),
+            $this->girderRequestJson($settings, 'GET', '/folder/' . $id . '/rootpath', null),
+        ];
+    }
+
+    /** `{field}`, or `{field} -{instance}` for a repeating instance. */
+    private function isFieldFolderName($name, $fieldName)
+    {
+        $base = $this->sanitizePathPart($fieldName, 'upload');
+        return $name === $base || strpos((string) $name, $base . ' -') === 0;
+    }
+
+    private function uploadOutOfScope($record, $fieldName)
+    {
+        $this->log('[GIRDER] folder outside the field refused', ['record' => (string) $record, 'field' => (string) $fieldName]);
+        return ['ok' => false, 'error' => 'This Girder folder does not belong to this field of this record.'];
     }
 
     /** The payload's fingerprint, or the error to answer with. */

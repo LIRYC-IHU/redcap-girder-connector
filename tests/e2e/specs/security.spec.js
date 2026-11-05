@@ -73,6 +73,52 @@ test.describe('security', () => {
         expect(await girder.listRecordFiles(recordId)).toHaveLength(1);
     });
 
+    test('a folder of another record, or the record itself, cannot be deleted or read', async ({ page }) => {
+        const [mine, other] = [`sx${RUN}d`, `sx${RUN}e`];
+        redcap.trackDialogs(page);
+        for (const recordId of [mine, other]) {
+            await redcap.openRecordForm(page, recordId);
+            await redcap.uploadFiles(page, [fixturePath('p1000001_20240115.dcm')]);
+            await expect(redcap.review(page)).toBeVisible({ timeout: 60_000 });
+            await redcap.answerReview(page);
+            await redcap.waitForUploadOutcome(recordId);
+            await page.waitForLoadState('load');
+        }
+        const otherUpload = (await redcap.readUploadMetadata(other)).girder.parentFolderId;
+        const myRecordFolder = (await girder.recordFolder(mine))._id;
+
+        await redcap.openRecordForm(page, mine, { create: false });
+        for (const folderId of [otherUpload, myRecordFolder]) {
+            for (const action of ['delete-upload-contents', 'refresh-upload-metadata']) {
+                const answer = await redcap.callModule(page, action, { fieldName: field(), folderId });
+                expect(answer.ok, `${action} ${folderId}`).toBe(false);
+                expect(answer.error).toMatch(/does not belong/);
+            }
+        }
+        page.removeAllListeners('dialog');
+        expect(await girder.listRecordFiles(other)).toHaveLength(1);
+        expect(await girder.listRecordFiles(mine)).toHaveLength(1);
+    });
+
+    test('a wrapped report and a Secondary Capture are set aside with their reason, the images go through', async ({ page }) => {
+        const recordId = `sx${RUN}f`;
+        redcap.trackDialogs(page);
+        await redcap.openRecordForm(page, recordId);
+        await redcap.uploadFiles(page, ['report_20240115.dcm', 'capture_20240115.dcm', 'p1000001_20240115.dcm'].map(fixturePath));
+        await expect(redcap.review(page)).toContainText('2 files set aside', { timeout: 60_000 });
+        await redcap.answerReview(page);
+        const metadata = await redcap.waitForUploadOutcome(recordId);
+        page.removeAllListeners('dialog');
+
+        expect(metadata.uploadState.status).toBe('completed');
+        const reasons = metadata.rejectedFiles.map((entry) => entry.reason).join();
+        expect(reasons).toMatch(/wraps a document/);
+        expect(reasons).toMatch(/Secondary Capture/);
+        const files = await girder.listRecordFiles(recordId);
+        expect(files).toHaveLength(1);
+        expect((await girder.downloadFile(files[0].file._id)).toString('latin1')).not.toContain('%PDF');
+    });
+
     test('free text in the project title or a setting cannot run in the form', async ({ page }) => {
         const pid = Number(loadState().redcap.projectId);
         const title = module_.sql(`SELECT app_title FROM redcap_projects WHERE project_id = ${pid}`);

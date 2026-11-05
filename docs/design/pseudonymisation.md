@@ -223,6 +223,13 @@ MR-CNS-04. Ces valeurs sont donc traitées avant lui :
   deux calendriers.
 - **Holter Schiller** : la date d'enregistrement n'est pas décalée (son emplacement dans
   le format n'est pas documenté). Lacune existante.
+- **Documents encapsulés** (PDF, CDA) : un fichier DICOM qui en contient est refusé et mis
+  de côté avec son motif, car l'identité est dans le document, hors de portée. Les comptes
+  rendus ne passent donc pas par ce module.
+- **Secondary Capture** : les cinq classes sont refusées de la même façon. Une capture
+  d'écran ou de document peut montrer l'identité dans ses pixels, que le module ne lit pas.
+  Le refus ne porte que sur ces classes : le contrôle du texte incrusté dans les autres
+  images reste fait en amont.
 - **Texte incrusté dans les images** (MR-SEC-07) : le module ne traite pas les pixels. Son
   absence est vérifiée en amont, ce que le PIA doit décrire, avec l'analyse des
   particularités visuelles (dispositifs implantés visibles en scopie, par exemple).
@@ -285,7 +292,10 @@ Réglages :
 11. Un même patient sur deux records ⇒ même décalage, UID différents.
 12. Fichier dont le nom patient et la description de série contiennent du HTML actif ⇒
     affiché comme texte, jamais exécuté.
-13. Montée de version réelle depuis une version publiée (`tests/e2e/run.sh upgrade <tag>`) :
+13. Dossier d'un autre record, ou dossier du record lui-même, demandé à la suppression
+    ou à l'actualisation ⇒ refus ; DICOM contenant un PDF, ou Secondary Capture ⇒ mis de
+    côté, le reste passe.
+14. Montée de version réelle depuis une version publiée (`tests/e2e/run.sh upgrade <tag>`) :
     voir §9.
 
 ## 9. Compatibilité

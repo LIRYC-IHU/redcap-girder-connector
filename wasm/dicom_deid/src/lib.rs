@@ -210,7 +210,11 @@ pub fn inspect_bytes(
                     return Err(dicom::DICOMDIR_SKIP_REASON.to_string())
                 }
                 Ok(dicom::DicomKind::Object) => {
-                    ("dicom", enable_dicom, dicom::identity(input_bytes)?)
+                    let identity = dicom::identity(input_bytes)?;
+                    match identity.refusal {
+                        Some(reason) if enable_dicom => return Err(reason.to_string()),
+                        _ => ("dicom", enable_dicom, identity),
+                    }
                 }
                 Err(_) => return Err("SKIP: file is unsupported".to_string()),
             },

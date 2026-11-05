@@ -37,7 +37,7 @@ pub const DICOM_PRIVATE_TAG: dicom_core::Tag = dicom_core::Tag(0x0033, 0x1001);
 pub const DICOM_PRIVATE_VALUE: &str = "OPERATOR DUPONT MARIE";
 
 const EXPLICIT_VR_LITTLE_ENDIAN: &str = "1.2.840.10008.1.2.1";
-const SECONDARY_CAPTURE_STORAGE: &str = "1.2.840.10008.5.1.4.1.1.7";
+const X_RAY_ANGIOGRAPHIC_STORAGE: &str = "1.2.840.10008.5.1.4.1.1.12.1";
 
 /// A minimal but standards-shaped DICOM Part 10 file (128-byte preamble +
 /// `DICM` + file meta group + data set) carrying the PHI constants above.
@@ -73,9 +73,31 @@ fn dicom_fixture_with(study_date: &str, birth_date: Option<&str>) -> Vec<u8> {
     part10_bytes(dicom_dataset_with(study_date, birth_date))
 }
 
+/// The standard fixture with another SOP class in its file meta group alone.
+pub fn dicom_fixture_with_meta_sop_class(uid: &str) -> Vec<u8> {
+    let meta_builder = FileMetaTableBuilder::new()
+        .media_storage_sop_class_uid(uid)
+        .media_storage_sop_instance_uid(DICOM_SOP_UID)
+        .transfer_syntax(EXPLICIT_VR_LITTLE_ENDIAN)
+        .implementation_class_uid("1.2.826.0.1.3680043.10.543.1");
+    // `with_meta` would copy the data set's SOP class over the meta one.
+    let mut file_object = dicom_object::FileDicomObject::new_empty_with_meta(
+        meta_builder.build().expect("meta table"),
+    );
+    for elem in dicom_dataset_with(DICOM_STUDY_DATE, Some(DICOM_BIRTH_DATE)).into_iter() {
+        file_object.put(elem);
+    }
+
+    let mut bytes = Vec::new();
+    file_object
+        .write_all(&mut bytes)
+        .expect("serialize fixture");
+    bytes
+}
+
 fn part10_bytes(object: InMemDicomObject) -> Vec<u8> {
     let meta_builder = FileMetaTableBuilder::new()
-        .media_storage_sop_class_uid(SECONDARY_CAPTURE_STORAGE)
+        .media_storage_sop_class_uid(X_RAY_ANGIOGRAPHIC_STORAGE)
         .media_storage_sop_instance_uid(DICOM_SOP_UID)
         .transfer_syntax(EXPLICIT_VR_LITTLE_ENDIAN)
         .implementation_class_uid("1.2.826.0.1.3680043.10.543.1");
@@ -168,7 +190,7 @@ fn dicom_dataset_with(study_date: &str, birth_date: Option<&str>) -> InMemDicomO
     object.put(DataElement::new(
         tags::SOP_CLASS_UID,
         VR::UI,
-        PrimitiveValue::from(SECONDARY_CAPTURE_STORAGE),
+        PrimitiveValue::from(X_RAY_ANGIOGRAPHIC_STORAGE),
     ));
 
     object
@@ -242,7 +264,7 @@ pub fn dicomdir_fixture_with_misleading_meta() -> Vec<u8> {
     ));
 
     let meta_builder = FileMetaTableBuilder::new()
-        .media_storage_sop_class_uid(SECONDARY_CAPTURE_STORAGE)
+        .media_storage_sop_class_uid(X_RAY_ANGIOGRAPHIC_STORAGE)
         .media_storage_sop_instance_uid("1.2.826.0.1.3680043.10.543.9.2")
         .transfer_syntax(EXPLICIT_VR_LITTLE_ENDIAN)
         .implementation_class_uid("1.2.826.0.1.3680043.10.543.1");
