@@ -188,7 +188,7 @@ pub fn identity(input_bytes: &[u8]) -> crate::dicom::Identity {
         nip: scan.subject_id.or(scan.vendor_patient_id),
         name,
         birth_date: scan.birth_date,
-        series: None,
+        ..Default::default()
     }
 }
 

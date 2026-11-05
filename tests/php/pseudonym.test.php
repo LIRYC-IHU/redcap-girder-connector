@@ -494,6 +494,97 @@ return function ($t): void {
         $t->assertSame(2, invoke($module, 'countUploadsUnder', [[], 'record', 'gone']), 'the folder being deleted does not count');
     });
 
+    // --- Folders named by the browser --------------------------------------
+
+    $placed = function (array $path, string $name = 'scans') {
+        $module = new class extends GirderUploaderModule {
+            /** @var array{0: array, 1: array}|null */
+            public $placement = null;
+            public $failure = null;
+            public $uploadFields = [];
+
+            protected function getGirderUploadFields($projectId, $instrument)
+            {
+                return $this->uploadFields;
+            }
+
+            protected function folderWithPath($settings, $folderId)
+            {
+                if ($this->failure !== null) {
+                    throw new \Exception($this->failure);
+                }
+                return $this->placement;
+            }
+        };
+        $folder = function ($id, $folderName) {
+            return ['object' => ['_id' => $id, 'name' => $folderName]];
+        };
+        $module->placement = [['_id' => 'f', 'name' => $name], array_map(function ($entry) use ($folder) {
+            return $folder($entry[0], $entry[1]);
+        }, $path)];
+        return $module;
+    };
+    $settings = ['rootCollectionId' => 'collection-1'];
+    $locate = function ($module, string $record = 'REC-1', string $field = 'scans') use ($settings) {
+        return invoke($module, 'locateUpload', [$settings, 'f', $record, $field]);
+    };
+    $collection = ['collection-1', 'REDCap'];
+    $dag = ['dag', 'NO_DAG'];
+    $record = ['record', 'REC-1'];
+    $event = ['event', '43 (Event 1)'];
+
+    $t->test("a field's folder is found, with or without its event", function ($t) use ($placed, $locate, $collection, $dag, $record, $event): void {
+        $t->assertSame('record', $locate($placed([$collection, $dag, $record, $event])));
+        $t->assertSame('record', $locate($placed([$collection, $dag, $record])), 'as 1.x stored it');
+        $t->assertSame('record', $locate($placed([$collection, $dag, $record, $event], 'scans -2')), 'a repeating instance');
+    });
+
+    $t->test('a folder anywhere else is refused', function ($t) use ($placed, $locate, $collection, $dag, $record, $event): void {
+        $cases = [
+            'another record' => $placed([$collection, $dag, ['other', 'REC-2'], $event]),
+            'another collection' => $placed([['collection-2', 'REDCap'], $dag, $record, $event]),
+            'another field' => $placed([$collection, $dag, $record, $event], 'consent_scans'),
+            'a field with the same start' => $placed([$collection, $dag, $record, $event], 'scans_extra'),
+            'the record itself' => $placed([$collection, $dag], 'REC-1'),
+            'a folder inside an upload' => $placed([$collection, $dag, $record, $event, ['field', 'consent_scans']]),
+            'under something that is no event' => $placed([$collection, $dag, $record, ['field', 'consent_scans']]),
+        ];
+        foreach ($cases as $label => $module) {
+            $t->assertSame(false, $locate($module), $label);
+        }
+    });
+
+    $t->test('a folder Girder no longer has is gone, not an error', function ($t) use ($placed, $locate, $collection, $dag, $record): void {
+        $module = $placed([$collection, $dag, $record]);
+        $module->failure = 'Girder request failed (400): {"message": "Invalid folder id (abc).", "type": "rest"}';
+        $t->assertSame(null, $locate($module));
+
+        $module->failure = 'Girder request failed (500): boom';
+        $failed = false;
+        try {
+            $locate($module);
+        } catch (\Exception $error) {
+            $failed = true;
+        }
+        $t->assertTrue($failed, 'an outage is not a missing folder');
+    });
+
+    $t->test('deleting or refreshing a folder out of scope is refused and logged', function ($t) use ($placed, $collection, $dag, $event): void {
+        $module = $placed([$collection, $dag, ['other', 'REC-2'], $event]);
+        $module->projectSettings = pseudonymTestModule()->projectSettings;
+        $call = function (string $method) use ($module) {
+            return invoke($module, $method, [['fieldName' => 'scans', 'folderId' => 'f'], 12, 'imaging', 'REC-1']);
+        };
+        $module->uploadFields = ['scans'];
+
+        foreach (['handleDeleteUploadContents', 'handleRefreshUploadMetadata'] as $method) {
+            $answer = $call($method);
+            $t->assertFalse($answer['ok'], $method);
+            $t->assertTrue(strpos($answer['error'], 'does not belong') !== false, $answer['error']);
+        }
+        $t->assertSame('[GIRDER] folder outside the field refused', end($module->logs)[0]);
+    });
+
     $t->test('enabling the module creates the REDCap key and the project domain', function ($t): void {
         $module = pseudonymTestModule();
         $module->redcap_module_system_enable('v2.0.0');

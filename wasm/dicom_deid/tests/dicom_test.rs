@@ -109,6 +109,96 @@ fn refuses_to_deidentify_a_dicomdir() {
     assert!(error.contains("DICOMDIR"), "got {error}");
 }
 
+fn with_document(object: &mut InMemDicomObject) {
+    object.put(DataElement::new(
+        tags::ENCAPSULATED_DOCUMENT,
+        VR::OB,
+        PrimitiveValue::from(b"%PDF-1.4 DOE JOHN".to_vec()),
+    ));
+}
+
+#[test]
+fn refuses_a_file_wrapping_a_document() {
+    // A report names the patient inside the document, out of reach of any rule.
+    let error = deidentify(
+        &dicom_fixture_edited(with_document),
+        "REC-42",
+        "MY PROJECT^REC-42",
+    )
+    .unwrap_err();
+
+    assert_eq!(error, dicom::ENCAPSULATED_DOCUMENT_REASON);
+    assert!(!error.starts_with("SKIP:"), "the uploader must see why");
+}
+
+#[test]
+fn refuses_a_document_wrapped_inside_a_sequence() {
+    let input = dicom_fixture_edited(|object| {
+        let mut item = InMemDicomObject::new_empty();
+        with_document(&mut item);
+        object.put(DataElement::new(
+            tags::REFERENCED_SERIES_SEQUENCE,
+            VR::SQ,
+            DataSetSequence::from(vec![item]),
+        ));
+    });
+
+    assert_eq!(
+        deidentify(&input, "REC-42", "MY PROJECT^REC-42").unwrap_err(),
+        dicom::ENCAPSULATED_DOCUMENT_REASON
+    );
+}
+
+#[test]
+fn an_ordinary_image_is_not_refused() {
+    assert_eq!(dicom::identity(&dicom_fixture()).unwrap().refusal, None);
+}
+
+fn with_sop_class(uid: &'static str) -> impl FnOnce(&mut InMemDicomObject) {
+    move |object| put(object, tags::SOP_CLASS_UID, VR::UI, uid)
+}
+
+#[test]
+fn refuses_every_secondary_capture_class() {
+    for uid in [
+        "1.2.840.10008.5.1.4.1.1.7",
+        "1.2.840.10008.5.1.4.1.1.7.1",
+        "1.2.840.10008.5.1.4.1.1.7.2",
+        "1.2.840.10008.5.1.4.1.1.7.3",
+        "1.2.840.10008.5.1.4.1.1.7.4",
+    ] {
+        assert_eq!(
+            deidentify(
+                &dicom_fixture_edited(with_sop_class(uid)),
+                "REC-42",
+                "MY PROJECT^REC-42"
+            )
+            .unwrap_err(),
+            dicom::SECONDARY_CAPTURE_REASON,
+            "{uid}"
+        );
+    }
+}
+
+#[test]
+fn refuses_a_secondary_capture_announced_by_its_file_meta_alone() {
+    // The data set says otherwise: either one is enough.
+    let input = dicom_fixture_with_meta_sop_class("1.2.840.10008.5.1.4.1.1.7");
+
+    assert_eq!(
+        dicom::identity(&input).unwrap().refusal,
+        Some(dicom::SECONDARY_CAPTURE_REASON)
+    );
+}
+
+#[test]
+fn a_class_merely_starting_with_the_same_digits_is_not_a_secondary_capture() {
+    let endoscopy = dicom_fixture_edited(with_sop_class("1.2.840.10008.5.1.4.1.1.77.1.1"));
+
+    assert_eq!(dicom::identity(&endoscopy).unwrap().refusal, None);
+    assert!(deidentify(&endoscopy, "REC-42", "MY PROJECT^REC-42").is_ok());
+}
+
 #[test]
 fn rejects_non_dicom_input() {
     assert!(dicom::validate(b"").is_err());
@@ -679,7 +769,7 @@ fn class_uids_are_left_alone() {
 
     assert_eq!(
         read_dicom_string(&output, tags::SOP_CLASS_UID).as_deref(),
-        Some("1.2.840.10008.5.1.4.1.1.7")
+        Some("1.2.840.10008.5.1.4.1.1.12.1")
     );
 }
 

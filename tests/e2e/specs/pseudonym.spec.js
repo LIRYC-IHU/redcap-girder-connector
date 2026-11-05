@@ -94,7 +94,7 @@ test.describe('patient pseudonym', () => {
         const first = await upload(page, recordId, ['p1000001_20240115.dcm']);
         expectCompleted(first.metadata);
         // The uploader saw the patient, the content and the check before confirming.
-        for (const line of [/1000001/, /ZZTEST/, /ALICE/, /12\/02\/1954/, /DICOM\s+OT/, /First upload for this record/]) {
+        for (const line of [/1000001/, /ZZTEST/, /ALICE/, /12\/02\/1954/, /DICOM\s+XA/, /First upload for this record/]) {
             expect(first.review).toMatch(line);
         }
         const fingerprint = module_.storedFingerprint(recordId);

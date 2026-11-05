@@ -47,6 +47,20 @@ Design and threat model:
   now reads the right REDCap enforces on the request, or else the project's
   `data_entry` rights, and understands both encodings: legacy `0`–`3` and REDCap
   15's bitmask. Anything it cannot establish is a refusal.
+- **Refreshing or deleting an upload is confined to the field.** Both took a folder
+  id from the browser and acted on it with the project's Girder key, so a user who
+  knew an id could read or delete any folder that key reaches, in another record
+  or DAG. The server now checks that it is this field's folder, on this record, in
+  the project's collection, and logs a refusal. An upload whose record was renamed
+  since no longer matches: the field keeps showing what it stored.
+- **A DICOM file wrapping a document is refused.** The anonymizer has no rule for
+  `EncapsulatedDocument`, so a PDF or CDA report went through with the patient's
+  identity inside it. The file is set aside with its reason, and the rest of the
+  batch goes on. With DICOM deidentification off, it is sent as it is, like any
+  file of that format.
+- **A DICOM Secondary Capture is refused**, in all five classes, on the same terms:
+  an image of a screen or a document can show the patient's identity in its pixels,
+  which the module does not read. Other classes of images are not concerned.
 - **Free text can no longer run in the form.** The page's configuration was printed
   in a `<script>` with `</script>` left intact, so a user with design rights could
   run code as anyone opening the form, through the project title. It is now escaped

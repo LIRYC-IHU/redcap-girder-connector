@@ -230,6 +230,59 @@ pub fn validate(input_bytes: &[u8]) -> Result<DicomKind, String> {
 pub const DICOMDIR_SKIP_REASON: &str =
     "SKIP: DICOMDIR is the index of the original media, not data; it is not uploaded";
 
+/// The reason a file wrapping a document is refused, as reported to the browser.
+pub const ENCAPSULATED_DOCUMENT_REASON: &str =
+    "this DICOM file wraps a document (PDF, CDA...), whose content cannot be deidentified; it is not uploaded";
+
+/// The reason a Secondary Capture is refused, as reported to the browser.
+pub const SECONDARY_CAPTURE_REASON: &str =
+    "this DICOM file is a Secondary Capture, an image of a screen or a document whose content cannot be deidentified; it is not uploaded";
+
+/// Secondary Capture Image Storage. The four multi-frame classes extend it by
+/// one component, and the dot matters: `1.2.840.10008.5.1.4.1.1.77.1.1` is
+/// VL Endoscopic Image Storage.
+const SECONDARY_CAPTURE_STORAGE: &str = "1.2.840.10008.5.1.4.1.1.7";
+
+fn is_secondary_capture(uid: &str) -> bool {
+    let uid = uid.trim_end_matches('\0').trim();
+    uid == SECONDARY_CAPTURE_STORAGE
+        || uid
+            .strip_prefix(SECONDARY_CAPTURE_STORAGE)
+            .is_some_and(|rest| rest.starts_with('.'))
+}
+
+/// Why this file cannot be deidentified at all, if so. The file meta group and
+/// the data set are both asked: a converter may have rewritten either.
+fn refusal(object: &DefaultDicomObject) -> Option<&'static str> {
+    let in_data_set = object
+        .element(tags::SOP_CLASS_UID)
+        .ok()
+        .and_then(|elem| elem.to_str().ok().map(|uid| is_secondary_capture(&uid)))
+        .unwrap_or(false);
+
+    if in_data_set || is_secondary_capture(object.meta().media_storage_sop_class_uid()) {
+        Some(SECONDARY_CAPTURE_REASON)
+    } else if wraps_document(object) {
+        Some(ENCAPSULATED_DOCUMENT_REASON)
+    } else {
+        None
+    }
+}
+
+/// Whether a data set wraps a document, sequences included.
+///
+/// A report's identity sits inside the document, where no rule can reach it, and
+/// the anonymizer has no rule for this element anyway. Emptying it would leave a
+/// file with nothing in it, so such a file is refused.
+fn wraps_document(object: &InMemDicomObject) -> bool {
+    object.iter().any(|elem| {
+        elem.tag() == tags::ENCAPSULATED_DOCUMENT
+            || elem
+                .items()
+                .is_some_and(|items| items.iter().any(wraps_document))
+    })
+}
+
 /// Who a file belongs to, read before deidentification: the NIP feeds the
 /// pseudonym, the name and birth date are shown to the uploader for
 /// confirmation and never leave the browser.
@@ -241,6 +294,8 @@ pub struct Identity {
     pub birth_date: Option<String>,
     /// The DICOM series the file belongs to, for the transfer summary.
     pub series: Option<Series>,
+    /// Why this file cannot be deidentified at all, if so.
+    pub refusal: Option<&'static str>,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -268,6 +323,7 @@ pub fn identity(input_bytes: &[u8]) -> Result<Identity, String> {
         name: read_string(&object, tags::PATIENT_NAME),
         birth_date: read_string(&object, tags::PATIENT_BIRTH_DATE),
         series,
+        refusal: refusal(&object),
     })
 }
 
@@ -284,6 +340,9 @@ pub fn deidentify(
         .map_err(|e| format!("SKIP: input is not a valid DICOM file: {e}"))?;
     if kind_of(&source) == DicomKind::Directory {
         return Err(DICOMDIR_SKIP_REASON.to_string());
+    }
+    if let Some(reason) = refusal(&source) {
+        return Err(reason.to_string());
     }
 
     // Computed on the real dates, before they move.

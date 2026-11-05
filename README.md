@@ -13,6 +13,8 @@ Supported formats:
 | Format | Detection | What is removed |
 | --- | --- | --- |
 | DICOM | `DICM` magic code, or a bare data set / file meta group without one | Patient identity, institution, private tags; UIDs rehashed; dates shifted |
+| DICOM wrapping a document (PDF, CDA…) | `EncapsulatedDocument` element, sequences included | Not uploaded at all: the identity sits inside the document, out of reach. Set aside with its reason |
+| DICOM Secondary Capture | SOP class `1.2.840.10008.5.1.4.1.1.7` and its multi-frame `.7.1` to `.7.4` | Not uploaded at all: an image of a screen or a document can show anything. Set aside with its reason |
 | DICOMDIR | Media Storage Directory SOP class | Not uploaded at all — see below |
 | XML ECG (HL7 aECG only) | root element + namespace | Everything outside an allowlist; UIDs replaced, dates shifted |
 | Schiller Holter | file magic number (byte 5 may be `0x00` or `0x01`) | Patient block, voice annotations, device UUID |
@@ -204,7 +206,11 @@ deidentified the old way.
 
 **What changes for users:**
 
-- A file without a NIP is now refused, where 1.x accepted it.
+- A file without a NIP is now refused, where 1.x accepted it, and so are a DICOM
+  file wrapping a document and a Secondary Capture.
+- A record renamed after its upload no longer matches its Girder folder: the field
+  keeps showing what it stored, but it can neither refresh nor delete that upload.
+  The same goes for a project moved to another root collection.
 - New uploads go under an event folder. Uploads sent before stay directly under
   the record, so **a script reading Girder has to expect both layouts**.
 - Existing projects keep their stored settings, new defaults only reach new
@@ -265,7 +271,10 @@ deidentified the old way.
    the same field on two events of a longitudinal project stays apart. A
    non-longitudinal project has its one event at that level too. Renaming an
    event starts a new folder for later uploads.
-7. A JSON summary — file sample, counts, Girder folder link, upload state — is
+7. Refreshing or deleting an upload acts on a folder id the browser sends. The
+   server first checks that it is this field's folder, on this record, in the
+   project's collection, since it acts with the project's Girder key.
+8. A JSON summary — file sample, counts, Girder folder link, upload state — is
    written back into the tagged field, **including the files that were left
    behind and why**. They are listed in the widget and stored with the rest, so
    a rejection is never silent: it survives a page reload and stays auditable.

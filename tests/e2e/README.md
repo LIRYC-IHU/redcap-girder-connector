@@ -104,8 +104,10 @@ service `fixtures`, profile `tools`) and writes to `fixtures/out/` (gitignored):
 | `noid_{…}.dcm` | *element absent* | `ZZTEST^CHARLES` | 19720330 |
 | `emptyid_{…}.dcm` | *present, empty* | `ZZTEST^DIANE` | 19810719 |
 | `html_{…}.dcm` | `1000003` | active HTML, also in SeriesDescription | 19900101 |
+| `report_{…}.dcm` | `1000001` | `ZZTEST^ALICE`, wrapping a PDF | 19540212 |
+| `capture_{…}.dcm` | `1000001` | `ZZTEST^ALICE`, a Secondary Capture | 19540212 |
 
-Each is an 8x8 MONOCHROME2 Secondary Capture, explicit VR little endian, with deterministic
+Each is an 8x8 MONOCHROME2 X-ray angiography image, explicit VR little endian, with deterministic
 UIDs. StudyDate/SeriesDate/ContentDate are 20240115 or 20240215. Institution, referring
 physician and accession number are also `ZZTEST…` values. `manifest.json` describes every
 file, so tests read expectations from it instead of hard-coding them.
@@ -139,7 +141,8 @@ than deleting it, because a move is synchronous and needs no worker.
 `specs/security.spec.js` acts as real users through REDCap's "View project as user":
 `e2e_read_only` (form right 129) must be refused every action from the console, and
 `e2e_editor` (130) must be able to upload without being an administrator. It also puts
-active HTML in the project title and in `pseudonym-domain`.
+active HTML in the project title and in `pseudonym-domain`, asks to delete and refresh
+folders outside the field, and sends a DICOM file wrapping a PDF and a Secondary Capture.
 
 ## Updating from a release
 

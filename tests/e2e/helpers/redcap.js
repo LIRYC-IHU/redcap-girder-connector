@@ -9,7 +9,15 @@ function redcap() {
 async function api(params) {
     const { baseUrl, projectToken } = redcap();
     const body = new URLSearchParams({ token: projectToken, format: 'json', returnFormat: 'json', ...params });
-    const response = await fetch(`${baseUrl}/api/`, { method: 'POST', body });
+    const send = () => fetch(`${baseUrl}/api/`, { method: 'POST', body });
+    // Apache recycles its workers, and fetch may just have reused a closed connection:
+    // the request never reached REDCap, so sending it again is safe.
+    const response = await send().catch((error) => {
+        if (error.cause && error.cause.code === 'UND_ERR_SOCKET') {
+            return send();
+        }
+        throw error;
+    });
     const text = await response.text();
     if (!response.ok) {
         throw new Error(`REDCap API ${params.content} failed (${response.status}): ${text}`);
